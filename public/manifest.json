@@ -1,0 +1,19 @@
+{
+  "short_name": "Chaat Kulture",
+  "name": "Chaat Kulture OS — Multi-Outlet Operations",
+  "description": "Professional mobile-first operations management system for Chaat Kulture",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#020617",
+  "theme_color": "#ea580c",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "scope": "/"
+}

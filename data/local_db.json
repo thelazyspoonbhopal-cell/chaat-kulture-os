@@ -1,0 +1,591 @@
+{
+  "version": "2.4.0",
+  "created_at": "2026-11-12T08:42:16.540Z",
+  "last_updated_at": "2026-11-12T13:11:51.288Z",
+  "business": {
+    "id": "biz_chaat_kulture_001",
+    "name": "Chaat Kulture",
+    "legal_name": "Chaat Kulture Food Ops LLP",
+    "gstin": "23AAAAA0000A1Z5",
+    "currency": "INR",
+    "currency_symbol": "₹",
+    "timezone": "Asia/Kolkata",
+    "day_close_cutoff_hour": 4
+  },
+  "locations": [
+    {
+      "id": "loc_base_01",
+      "code": "BASE-01",
+      "name": "Base Kitchen",
+      "type": "base_kitchen",
+      "is_active": true,
+      "address": "Industrial Area, Govindpura, Bhopal",
+      "phone": "9826011111",
+      "business_id": "biz_chaatkulture_01",
+      "created_at": "2026-11-12T10:15:43.906Z",
+      "updated_at": "2026-11-12T13:11:51.282Z"
+    },
+    {
+      "id": "loc_stor_02",
+      "code": "STOR-02",
+      "name": "Central Store Room",
+      "type": "store_room",
+      "is_active": true,
+      "address": "Industrial Area, Govindpura, Bhopal",
+      "phone": "9826011112",
+      "business_id": "biz_chaatkulture_01",
+      "created_at": "2026-11-12T10:15:43.906Z",
+      "updated_at": "2026-11-12T13:11:51.282Z"
+    },
+    {
+      "id": "loc_shah_03",
+      "code": "SHAH-03",
+      "name": "Shahpura Street Outlet",
+      "type": "outlet",
+      "is_active": true,
+      "address": "Sector B, Shahpura Lake Promenade, Bhopal",
+      "phone": "9826022222",
+      "business_id": "biz_chaatkulture_01",
+      "created_at": "2026-11-12T10:15:43.906Z",
+      "updated_at": "2026-11-12T13:11:51.282Z"
+    },
+    {
+      "id": "loc_11no_04",
+      "code": "11NO-04",
+      "name": "Tukisssz Kasa, 11 No. Stop Food Court Outlet",
+      "type": "outlet",
+      "is_active": true,
+      "address": "Food Court Zone, 11 No. Stop, Arera Colony, Bhopal",
+      "phone": "9826033333",
+      "business_id": "biz_chaatkulture_01",
+      "created_at": "2026-11-12T10:15:43.906Z",
+      "updated_at": "2026-11-12T13:11:51.282Z"
+    }
+  ],
+  "units": [
+    {
+      "id": "u_kg",
+      "code": "kg",
+      "name": "Kilogram",
+      "symbol": "kg",
+      "is_base_unit": true,
+      "precision_decimals": 3
+    },
+    {
+      "id": "u_g",
+      "code": "g",
+      "name": "Gram",
+      "symbol": "g",
+      "is_base_unit": false,
+      "precision_decimals": 1
+    },
+    {
+      "id": "u_ltr",
+      "code": "ltr",
+      "name": "Litre",
+      "symbol": "L",
+      "is_base_unit": true,
+      "precision_decimals": 3
+    },
+    {
+      "id": "u_ml",
+      "code": "ml",
+      "name": "Millilitre",
+      "symbol": "ml",
+      "is_base_unit": false,
+      "precision_decimals": 1
+    },
+    {
+      "id": "u_pc",
+      "code": "pc",
+      "name": "Piece",
+      "symbol": "pc",
+      "is_base_unit": true,
+      "precision_decimals": 0
+    },
+    {
+      "id": "u_plate",
+      "code": "plate",
+      "name": "Plate",
+      "symbol": "plate",
+      "is_base_unit": true,
+      "precision_decimals": 0
+    },
+    {
+      "id": "u_pkt",
+      "code": "pkt",
+      "name": "Packet",
+      "symbol": "pkt",
+      "is_base_unit": true,
+      "precision_decimals": 0
+    },
+    {
+      "id": "u_box",
+      "code": "box",
+      "name": "Box",
+      "symbol": "box",
+      "is_base_unit": true,
+      "precision_decimals": 0
+    }
+  ],
+  "expense_categories": [
+    {
+      "id": "exp_cat_raw",
+      "code": "RAW_PURCHASE",
+      "name": "Raw Material Direct Local Buys"
+    },
+    {
+      "id": "exp_cat_gas",
+      "code": "GAS_POWER",
+      "name": "Commercial Gas & Electricity"
+    },
+    {
+      "id": "exp_cat_pack",
+      "code": "PACKAGING",
+      "name": "Disposables, Kulhads & Plates"
+    },
+    {
+      "id": "exp_cat_rent",
+      "code": "RENT_EST",
+      "name": "Outlet & Kitchen Rent"
+    },
+    {
+      "id": "exp_cat_wages",
+      "code": "WAGES_ADV",
+      "name": "Staff Daily Allowances & Advances"
+    },
+    {
+      "id": "exp_cat_maint",
+      "code": "MAINTENANCE",
+      "name": "Utensils & Equipment Repairs"
+    },
+    {
+      "id": "exp_cat_misc",
+      "code": "MISC",
+      "name": "Miscellaneous Cleaning & Sanitation"
+    }
+  ],
+  "feature_flags": [
+    {
+      "key": "enable_pos_quick_billing",
+      "name": "POS Quick Cash Billing",
+      "enabled": true
+    },
+    {
+      "key": "enable_split_payments",
+      "name": "Split Tender (Cash/UPI/Aggregator)",
+      "enabled": true
+    },
+    {
+      "key": "strict_physical_stock_only",
+      "name": "Strict Physical Stock Movements Only (Zero Recipe Auto-Deductions)",
+      "enabled": true
+    },
+    {
+      "key": "enable_inter_outlet_transfers",
+      "name": "Two-Stage Inter-Location Transfers",
+      "enabled": true
+    },
+    {
+      "key": "enable_daily_closing_audit",
+      "name": "12-Section Daily Closing Audit",
+      "enabled": true
+    },
+    {
+      "key": "enable_owner_cash_handover",
+      "name": "Owner Cash Handover Separation",
+      "enabled": true
+    }
+  ],
+  "menu_categories": [],
+  "menu_items": [],
+  "inventory_categories": [],
+  "inventory_items": [],
+  "inventory_balances": [],
+  "inventory_movements": [],
+  "recipes": [],
+  "production_records": [],
+  "stock_requests": [
+    {
+      "id": "req_1794479764870",
+      "client_tx_id": "tx_req_1794479764870_41gv",
+      "business_id": "biz_chaatkulture_01",
+      "request_number": "REQ-SHAH-107",
+      "from_location_id": "loc_shah_03",
+      "to_location_id": "loc_base_01",
+      "request_type": "next_day",
+      "required_date": "2026-11-12",
+      "status": "rejected",
+      "notes": "",
+      "created_by": "Outlet Staff",
+      "created_at": "2026-11-12T10:36:04.870Z",
+      "updated_at": "2026-11-12T13:11:51.283Z",
+      "items": [
+        {
+          "inventory_item_id": "demo_inv_bhaji_prep",
+          "item_name": "Cooked Bhaji (Base Kitchen)",
+          "requested_quantity": 10,
+          "unit": "kg",
+          "id": "rqi_1794479764885_0",
+          "stock_request_id": "req_1794479764870",
+          "approved_quantity": 10,
+          "dispatched_quantity": 0,
+          "received_quantity": 0
+        }
+      ],
+      "reviewed_by": "owner",
+      "rejection_reason": "b"
+    }
+  ],
+  "dispatches": [],
+  "transfer_receipts": [],
+  "wastage_records": [],
+  "suppliers": [],
+  "purchases": [],
+  "supplier_payments": [],
+  "expenses": [],
+  "expense_payments": [],
+  "sales": [],
+  "daily_closings": [
+    {
+      "id": "dc_loc_shah_03_2026-11-12",
+      "business_id": "biz_chaatkulture_01",
+      "location_id": "loc_shah_03",
+      "closing_date": "2026-11-12",
+      "status": "not_started",
+      "sales_status": "not_started",
+      "cash_status": "not_started",
+      "upi_status": "not_started",
+      "zomato_status": "not_started",
+      "swiggy_status": "not_started",
+      "expenses_status": "not_started",
+      "stock_status": "not_started",
+      "wastage_status": "not_started",
+      "receiving_status": "not_started",
+      "dispatch_status": "not_started",
+      "notes_status": "not_started",
+      "final_submission_status": "not_started",
+      "completed_sections_count": 0,
+      "created_at": "2026-11-12T10:22:11.744Z",
+      "updated_at": "2026-11-12T13:11:51.283Z"
+    }
+  ],
+  "cash_transfers_to_owner": [],
+  "audit_logs": [],
+  "user_profiles": [
+    {
+      "id": "usr_kitchen",
+      "business_id": "biz_chaatkulture_01",
+      "full_name": "Chef Ram Kumar (Kitchen Manager)",
+      "email": "kitchen@chaatkulture.com",
+      "phone": "9826000003",
+      "role": "kitchen_manager",
+      "assigned_location_id": "loc_base_01",
+      "is_active": true,
+      "created_at": "2026-11-12T10:15:43.906Z",
+      "assigned_location_ids": [
+        "loc_base_01"
+      ],
+      "password_hash": "61e0f3b7dc4d804b465e97e9318f6ff185a711de94a1170dd9189800a78ded5d",
+      "password_salt": "ck_salt_ktn_01",
+      "updated_at": "2026-11-12T13:11:51.286Z"
+    },
+    {
+      "id": "usr_manager",
+      "business_id": "biz_chaatkulture_01",
+      "full_name": "Vikram Patel (Manager)",
+      "email": "manager@chaatkulture.com",
+      "phone": "9826000002",
+      "role": "manager",
+      "is_active": true,
+      "created_at": "2026-11-12T10:15:43.906Z",
+      "assigned_location_ids": [
+        "loc_base_01",
+        "loc_stor_02",
+        "loc_shah_03",
+        "loc_11no_04"
+      ],
+      "password_salt": "0734e7093594308610d363fa544506f7",
+      "password_hash": "9d5604a9186b88c4d92f3e661b2e00381801fa5a7474cb65e669ea662653a1b3",
+      "assigned_location_id": "loc_base_01",
+      "updated_at": "2026-11-12T13:11:51.286Z"
+    },
+    {
+      "id": "usr_owner",
+      "business_id": "biz_chaatkulture_01",
+      "full_name": "Aditya Sharma (Owner)",
+      "email": "admin@chaatkulture.com",
+      "phone": "9826000001",
+      "role": "owner",
+      "is_active": true,
+      "created_at": "2026-11-12T10:15:43.906Z",
+      "assigned_location_ids": [
+        "loc_base_01",
+        "loc_stor_02",
+        "loc_shah_03",
+        "loc_11no_04"
+      ],
+      "password_hash": "090c6b58ae017ee3d9b6caf4c8bf7bd113d6786f49a79bb84aa0b7f4e300e3d2",
+      "password_salt": "ck_salt_admin_01",
+      "updated_at": "2026-11-12T13:11:51.286Z"
+    },
+    {
+      "id": "usr_staff_11no",
+      "business_id": "biz_chaatkulture_01",
+      "full_name": "Rahul Sen (Outlet Staff)",
+      "phone": "9826000005",
+      "role": "outlet_staff",
+      "assigned_location_id": "loc_11no_04",
+      "pin_hash": "1104",
+      "is_active": true,
+      "created_at": "2026-11-12T10:15:43.906Z",
+      "assigned_location_ids": [
+        "loc_11no_04"
+      ],
+      "password_hash": "d94585c931292a94b8308551969ccf381fdc33f45a245e87d31e3737affbfdb9",
+      "password_salt": "ck_salt_stf_01",
+      "updated_at": "2026-11-12T13:11:51.286Z"
+    },
+    {
+      "id": "usr_staff_multi",
+      "business_id": "biz_chaatkulture_01",
+      "full_name": "Rohan Verma",
+      "email": "rohan@chaatkulture.com",
+      "phone": "9826000006",
+      "role": "outlet_staff",
+      "password_salt": "ck_salt_stf_01",
+      "password_hash": "d94585c931292a94b8308551969ccf381fdc33f45a245e87d31e3737affbfdb9",
+      "assigned_location_ids": [
+        "loc_shah_03",
+        "loc_11no_04"
+      ],
+      "assigned_location_id": "loc_shah_03",
+      "pin_hash": "3344",
+      "is_active": true,
+      "notes": "Roving staff member assigned to multiple retail outlets (Shahpura & 11 No. Food Court).",
+      "created_at": "2026-01-01T00:00:00.000Z",
+      "updated_at": "2026-11-12T13:11:51.286Z"
+    },
+    {
+      "id": "usr_staff_shahpura",
+      "business_id": "biz_chaatkulture_01",
+      "full_name": "Deepak Singh (Outlet Staff)",
+      "phone": "9826000004",
+      "role": "outlet_staff",
+      "assigned_location_id": "loc_shah_03",
+      "pin_hash": "2026",
+      "is_active": true,
+      "created_at": "2026-11-12T10:15:43.906Z",
+      "assigned_location_ids": [
+        "loc_shah_03"
+      ],
+      "password_hash": "d94585c931292a94b8308551969ccf381fdc33f45a245e87d31e3737affbfdb9",
+      "password_salt": "ck_salt_stf_01",
+      "updated_at": "2026-11-12T13:11:51.286Z"
+    }
+  ],
+  "user_sessions": [
+    {
+      "id": "sess_1794488946673_bbj1s",
+      "user_id": "usr_manager",
+      "user_email": "manager@chaatkulture.com",
+      "user_name": "Vikram Patel (Manager)",
+      "role": "manager",
+      "device_id": "ac7a2adc1bd4350bb335d39182cacd0d",
+      "device_name": "Windows PC (Chrome)",
+      "latitude": 23.182764,
+      "longitude": 77.439123,
+      "location_accuracy": 126,
+      "location_address": "23.1828°N, 77.4391°E (Acc: ±126m)",
+      "is_active": false,
+      "login_at": "2026-11-12T13:09:06.651Z",
+      "last_active_at": "2026-11-12T13:09:59.838Z",
+      "revoked_at": "2026-11-12T13:09:59.827Z",
+      "revocation_reason": "user_logout",
+      "created_at": "2026-11-12T13:11:49.767Z",
+      "updated_at": "2026-11-12T13:11:51.287Z"
+    },
+    {
+      "id": "sess_1794489001913_16jge",
+      "user_id": "usr_owner",
+      "user_email": "admin@chaatkulture.com",
+      "user_name": "Aditya Sharma (Owner)",
+      "role": "owner",
+      "device_id": "ac7a2adc1bd4350bb335d39182cacd0d",
+      "device_name": "Windows PC (Chrome)",
+      "latitude": 23.182764,
+      "longitude": 77.439123,
+      "location_accuracy": 126,
+      "location_address": "23.1828°N, 77.4391°E (Acc: ±126m)",
+      "is_active": false,
+      "login_at": "2026-11-12T13:10:01.894Z",
+      "last_active_at": "2026-11-12T13:11:27.234Z",
+      "revoked_at": "2026-11-12T13:11:27.214Z",
+      "revocation_reason": "user_logout",
+      "created_at": "2026-11-12T13:11:49.767Z",
+      "updated_at": "2026-11-12T13:11:51.287Z"
+    },
+    {
+      "id": "sess_1794489088307_ab7di",
+      "user_id": "usr_owner",
+      "user_email": "admin@chaatkulture.com",
+      "user_name": "Aditya Sharma (Owner)",
+      "role": "owner",
+      "device_id": "ac7a2adc1bd4350bb335d39182cacd0d",
+      "device_name": "Windows PC (Chrome)",
+      "latitude": 23.182764,
+      "longitude": 77.439123,
+      "location_accuracy": 126,
+      "location_address": "23.1828°N, 77.4391°E (Acc: ±126m)",
+      "is_active": true,
+      "login_at": "2026-11-12T13:11:28.288Z",
+      "last_active_at": "2026-11-12T13:11:51.259Z",
+      "created_at": "2026-11-12T13:11:49.767Z",
+      "updated_at": "2026-11-12T13:11:51.287Z"
+    }
+  ],
+  "login_audit_logs": [
+    {
+      "email": "admin@chaatkulture.com",
+      "status": "FAILED_CREDENTIALS",
+      "device_id": "ac7a2adc1bd4350bb335d39182cacd0d",
+      "device_name": "Windows PC (Chrome)",
+      "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36",
+      "latitude": 23.182764,
+      "longitude": 77.439123,
+      "location_accuracy": 126,
+      "location_address": "23.1828°N, 77.4391°E (Acc: ±126m)",
+      "notes": "Unknown email address attempted login",
+      "id": "log_1794488891538_izxb",
+      "created_at": "2026-11-12T13:08:11.538Z",
+      "updated_at": "2026-11-12T13:11:51.288Z"
+    },
+    {
+      "email": "admin@chaatkulture.com",
+      "status": "FAILED_CREDENTIALS",
+      "device_id": "ac7a2adc1bd4350bb335d39182cacd0d",
+      "device_name": "Windows PC (Chrome)",
+      "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36",
+      "latitude": 23.182764,
+      "longitude": 77.439123,
+      "location_accuracy": 126,
+      "location_address": "23.1828°N, 77.4391°E (Acc: ±126m)",
+      "notes": "Unknown email address attempted login",
+      "id": "log_1794488904745_70n5",
+      "created_at": "2026-11-12T13:08:24.745Z",
+      "updated_at": "2026-11-12T13:11:51.288Z"
+    },
+    {
+      "email": "admin@chaatkulture.com",
+      "status": "FAILED_CREDENTIALS",
+      "device_id": "ac7a2adc1bd4350bb335d39182cacd0d",
+      "device_name": "Windows PC (Chrome)",
+      "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36",
+      "latitude": 23.182764,
+      "longitude": 77.439123,
+      "location_accuracy": 126,
+      "location_address": "23.1828°N, 77.4391°E (Acc: ±126m)",
+      "notes": "Unknown email address attempted login",
+      "id": "log_1794488929941_fmkk",
+      "created_at": "2026-11-12T13:08:49.941Z",
+      "updated_at": "2026-11-12T13:11:51.288Z"
+    },
+    {
+      "email": "admin@chaatkulture.com",
+      "status": "FAILED_CREDENTIALS",
+      "device_id": "ac7a2adc1bd4350bb335d39182cacd0d",
+      "device_name": "Windows PC (Chrome)",
+      "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36",
+      "latitude": 23.182764,
+      "longitude": 77.439123,
+      "location_accuracy": 126,
+      "location_address": "23.1828°N, 77.4391°E (Acc: ±126m)",
+      "notes": "Unknown email address attempted login",
+      "id": "log_1794488933855_trsb",
+      "created_at": "2026-11-12T13:08:53.855Z",
+      "updated_at": "2026-11-12T13:11:51.288Z"
+    },
+    {
+      "user_id": "usr_manager",
+      "email": "manager@chaatkulture.com",
+      "full_name": "Vikram Patel (Manager)",
+      "role": "manager",
+      "status": "SUCCESS",
+      "device_id": "ac7a2adc1bd4350bb335d39182cacd0d",
+      "device_name": "Windows PC (Chrome)",
+      "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36",
+      "latitude": 23.182764,
+      "longitude": 77.439123,
+      "location_accuracy": 126,
+      "location_address": "23.1828°N, 77.4391°E (Acc: ±126m)",
+      "notes": "Authenticated session started successfully",
+      "id": "log_1794488946679_20w4",
+      "created_at": "2026-11-12T13:09:06.679Z",
+      "updated_at": "2026-11-12T13:11:51.288Z"
+    },
+    {
+      "user_id": "usr_manager",
+      "email": "manager@chaatkulture.com",
+      "full_name": "Vikram Patel (Manager)",
+      "role": "manager",
+      "status": "LOGOUT",
+      "device_id": "ac7a2adc1bd4350bb335d39182cacd0d",
+      "device_name": "Windows PC (Chrome)",
+      "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36",
+      "notes": "User logged out voluntarily",
+      "id": "log_1794488999850_a4ln",
+      "created_at": "2026-11-12T13:09:59.850Z",
+      "updated_at": "2026-11-12T13:11:51.288Z"
+    },
+    {
+      "user_id": "usr_owner",
+      "email": "admin@chaatkulture.com",
+      "full_name": "Aditya Sharma (Owner)",
+      "role": "owner",
+      "status": "SUCCESS",
+      "device_id": "ac7a2adc1bd4350bb335d39182cacd0d",
+      "device_name": "Windows PC (Chrome)",
+      "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36",
+      "latitude": 23.182764,
+      "longitude": 77.439123,
+      "location_accuracy": 126,
+      "location_address": "23.1828°N, 77.4391°E (Acc: ±126m)",
+      "notes": "Authenticated session started successfully",
+      "id": "log_1794489001924_m6vv",
+      "created_at": "2026-11-12T13:10:01.924Z",
+      "updated_at": "2026-11-12T13:11:51.288Z"
+    },
+    {
+      "user_id": "usr_owner",
+      "email": "admin@chaatkulture.com",
+      "full_name": "Aditya Sharma (Owner)",
+      "role": "owner",
+      "status": "LOGOUT",
+      "device_id": "ac7a2adc1bd4350bb335d39182cacd0d",
+      "device_name": "Windows PC (Chrome)",
+      "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36",
+      "notes": "User logged out voluntarily",
+      "id": "log_1794489087241_fd8r",
+      "created_at": "2026-11-12T13:11:27.241Z",
+      "updated_at": "2026-11-12T13:11:51.288Z"
+    },
+    {
+      "user_id": "usr_owner",
+      "email": "admin@chaatkulture.com",
+      "full_name": "Aditya Sharma (Owner)",
+      "role": "owner",
+      "status": "SUCCESS",
+      "device_id": "ac7a2adc1bd4350bb335d39182cacd0d",
+      "device_name": "Windows PC (Chrome)",
+      "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36",
+      "latitude": 23.182764,
+      "longitude": 77.439123,
+      "location_accuracy": 126,
+      "location_address": "23.1828°N, 77.4391°E (Acc: ±126m)",
+      "notes": "Authenticated session started successfully",
+      "id": "log_1794489088312_abak",
+      "created_at": "2026-11-12T13:11:28.312Z",
+      "updated_at": "2026-11-12T13:11:51.288Z"
+    }
+  ]
+}

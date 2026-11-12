@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <rect width="512" height="512" rx="128" fill="#0f172a"/>
+  <circle cx="256" cy="256" r="192" fill="#ea580c" fill-opacity="0.15" stroke="#ea580c" stroke-width="16"/>
+  <!-- Bowl Icon -->
+  <path d="M128 256C128 326.69 185.31 384 256 384C326.69 384 384 326.69 384 256H128Z" fill="#ea580c"/>
+  <!-- Steam Curves -->
+  <path d="M192 192C184 168 200 144 192 128" stroke="#f97316" stroke-width="16" stroke-linecap="round"/>
+  <path d="M256 208C248 176 264 152 256 128" stroke="#f97316" stroke-width="16" stroke-linecap="round"/>
+  <path d="M320 192C312 168 328 144 320 128" stroke="#f97316" stroke-width="16" stroke-linecap="round"/>
+  <!-- Base Spoon Accent -->
+  <circle cx="360" cy="220" r="16" fill="#fbbf24"/>
+</svg>
