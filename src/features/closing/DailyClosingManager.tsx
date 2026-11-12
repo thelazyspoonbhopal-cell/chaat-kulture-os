@@ -909,7 +909,7 @@ export const DailyClosingManager: React.FC = () => {
               <div className="p-4 pt-0 border-t border-neutral-800/60 mt-2 space-y-4 text-xs">
                 {trackedItems.length === 0 ? (
                   <div className="text-center py-6 text-neutral-500">
-                    No active inventory items found. Add items via Inventory Master or Testing Sandbox.
+                    No active inventory items found. Add items via Inventory Master.
                   </div>
                 ) : (
                   <div className="overflow-x-auto max-h-72 overflow-y-auto border border-neutral-800 rounded-lg">

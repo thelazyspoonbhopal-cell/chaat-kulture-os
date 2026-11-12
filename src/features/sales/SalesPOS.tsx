@@ -399,7 +399,7 @@ export const SalesPOS: React.FC = () => {
             <EmptyState
               icon={<ShoppingCart className="w-8 h-8" />}
               title="No Dishes in Menu"
-              description="Your menu catalog is currently empty. Go to Admin Master Data Hub to add dishes or load test records from the Sandbox."
+              description="Your menu catalog is currently empty. Go to Admin Master Data Hub to add dishes."
             />
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3">

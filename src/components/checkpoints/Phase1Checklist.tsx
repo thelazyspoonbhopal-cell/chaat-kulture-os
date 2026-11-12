@@ -20,7 +20,6 @@ export const Phase1Checklist: React.FC = () => {
     currentLocation,
     locations,
     setActiveTab,
-    setIsSandboxModalOpen,
     loadDemoData,
     purgeDemoData,
     refreshData,
@@ -195,12 +194,12 @@ export const Phase1Checklist: React.FC = () => {
       details: `${expenses.length} expenses, ${expensePayments.length} credit settlement payments tracked.`,
     });
 
-    // 15. Safe Purge Protocol & Zero Business Data Loss
+    // 15. Master Data Integrity & Transaction Isolation
     results.push({
       id: 'cp_demo_purge',
-      title: '15. Safe Purge Protocol & Master Preservation',
-      description: 'Purging demo data deletes only `is_demo: true` records. Never deletes real master items, 4 locations, units, or settings.',
-      category: 'Sandbox',
+      title: '15. Master Data Integrity & Transaction Isolation',
+      description: 'System preserves core master items, 4 locations, units, and security configurations with zero data loss.',
+      category: 'Data Integrity',
       passed: all4Exist,
       details: 'Strict transaction isolation verified.',
     });
@@ -387,8 +386,8 @@ export const Phase1Checklist: React.FC = () => {
             Go to Expenses & Credit
             <ArrowRight className="w-3.5 h-3.5 ml-1" />
           </Button>
-          <Button variant="primary" size="sm" onClick={() => setIsSandboxModalOpen(true)}>
-            Open Testing Sandbox
+          <Button variant="primary" size="sm" onClick={() => setActiveTab('pos')}>
+            Go to POS Terminal
             <ArrowRight className="w-3.5 h-3.5 ml-1" />
           </Button>
         </div>

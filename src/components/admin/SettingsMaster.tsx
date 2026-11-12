@@ -4,11 +4,11 @@ import { settingsRepo } from '../../lib/dal/settingsRepo';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { Badge } from '../ui/Badge';
-import { Sliders, ToggleLeft, ToggleRight, Building, Percent, Sparkles, Shield } from 'lucide-react';
+import { Sliders, ToggleLeft, ToggleRight, Building, Percent, Shield } from 'lucide-react';
 import type { Business, FeatureFlag } from '../../types';
 
 export const SettingsMaster: React.FC = () => {
-  const { showToast, setIsSandboxModalOpen } = useApp();
+  const { showToast } = useApp();
   const [business, setBusiness] = useState<Business | null>(null);
   const [flags, setFlags] = useState<FeatureFlag[]>([]);
   const [defaultTax, setDefaultTax] = useState<string>('5.0');

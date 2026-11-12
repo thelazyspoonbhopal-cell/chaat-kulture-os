@@ -1,17 +1,12 @@
 import React from 'react';
-import { DevToolbar } from './DevToolbar';
 import { Header } from './Header';
 import { Sidebar } from './Sidebar';
 import { MobileNav } from './MobileNav';
 import { ToastContainer } from '../ui/ToastContainer';
-import { TestingSandboxModal } from '../sandbox/TestingSandboxModal';
 
 export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col antialiased">
-      {/* Local Development & Role Simulator Toolbar */}
-      <DevToolbar />
-
       {/* Main Top Header */}
       <Header />
 
@@ -31,9 +26,6 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
 
       {/* Global Notifications */}
       <ToastContainer />
-
-      {/* Testing Sandbox Modal */}
-      <TestingSandboxModal />
     </div>
   );
 };

@@ -13,12 +13,11 @@ import {
   CheckSquare,
   AlertTriangle,
   Store,
-  Sparkles,
 } from 'lucide-react';
 import type { Sale, Location } from '../../types';
 
 export const OwnerCommandCentre: React.FC = () => {
-  const { locations, isTestMode, setActiveTab, setIsSandboxModalOpen } = useApp();
+  const { locations, isTestMode, setActiveTab } = useApp();
   const [sales, setSales] = useState<Sale[]>([]);
   const [totalSales, setTotalSales] = useState<number>(0);
   const [cashSales, setCashSales] = useState<number>(0);
@@ -82,10 +81,6 @@ export const OwnerCommandCentre: React.FC = () => {
               ✨ 100% Production Ready Masters
             </Badge>
           )}
-          <Button variant="secondary" size="sm" onClick={() => setIsSandboxModalOpen(true)}>
-            <Sparkles className="w-4 h-4 text-orange-400" />
-            <span>Sandbox</span>
-          </Button>
         </div>
       </div>
 
@@ -208,12 +203,12 @@ export const OwnerCommandCentre: React.FC = () => {
           </button>
 
           <button
-            onClick={() => setIsSandboxModalOpen(true)}
+            onClick={() => setActiveTab('pos')}
             className="p-3 bg-slate-950 border border-slate-800 hover:border-blue-500/60 rounded-xl text-left transition-all group"
           >
-            <Sparkles className="w-5 h-5 text-blue-400 mb-1 group-hover:scale-110 transition-transform" />
-            <div className="font-bold text-white">Testing Sandbox</div>
-            <div className="text-[10px] text-slate-400">Load or purge demo data</div>
+            <Receipt className="w-5 h-5 text-blue-400 mb-1 group-hover:scale-110 transition-transform" />
+            <div className="font-bold text-white">Sales POS Billing</div>
+            <div className="text-[10px] text-slate-400">Rapid counter order punching</div>
           </button>
 
           <button

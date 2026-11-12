@@ -180,7 +180,7 @@ export const InventoryLedgerView: React.FC = () => {
             <EmptyState
               icon={<Boxes className="w-8 h-8" />}
               title="Inventory Master is Empty"
-              description="No inventory items or raw materials registered yet. Go to Admin Master Data Hub or load sample records from the Testing Sandbox."
+              description="No inventory items or raw materials registered yet. Go to Admin Master Data Hub to add inventory items."
             />
           ) : (
             <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">

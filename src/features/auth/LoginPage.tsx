@@ -29,8 +29,8 @@ interface LoginPageProps {
 export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
   const { showToast, refreshData } = useApp();
 
-  const [email, setEmail] = useState('admin@chaatkulture.com');
-  const [password, setPassword] = useState('Admin@ChaatKulture2026');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -132,12 +132,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
     } catch (err: any) {
       showToast(err.message || 'Failed to submit request', 'error');
     }
-  };
-
-  const handleQuickFill = (demoEmail: string, demoPass: string) => {
-    setEmail(demoEmail);
-    setPassword(demoPass);
-    setErrorMessage(null);
   };
 
   return (
@@ -316,55 +310,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
               <Smartphone className="w-3.5 h-3.5 text-blue-400 shrink-0" />
               <span>Single active session enforced. Logging in terminates prior sessions.</span>
             </p>
-          </div>
-        </div>
-
-        {/* Demo Personas Quick Fill (Helpful for Evaluation) */}
-        <div className="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-4 text-xs space-y-2.5">
-          <div className="flex items-center justify-between text-slate-400 font-bold">
-            <span className="flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5 text-orange-400" />
-              <span>Quick Role Demo Logins</span>
-            </span>
-            <span className="text-[10px] text-slate-500">1-Click Fill</span>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={() => handleQuickFill('admin@chaatkulture.com', 'Admin@ChaatKulture2026')}
-              className="p-2 rounded-xl bg-slate-950 hover:bg-slate-800 border border-slate-800 text-left transition-colors"
-            >
-              <span className="font-bold text-white block">👑 Super Admin</span>
-              <span className="text-[10px] text-slate-400 font-mono">admin@chaatkulture.com</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleQuickFill('manager@chaatkulture.com', 'Manager@2026')}
-              className="p-2 rounded-xl bg-slate-950 hover:bg-slate-800 border border-slate-800 text-left transition-colors"
-            >
-              <span className="font-bold text-white block">👔 Manager</span>
-              <span className="text-[10px] text-slate-400 font-mono">manager@chaatkulture.com</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleQuickFill('kitchen@chaatkulture.com', 'Kitchen@2026')}
-              className="p-2 rounded-xl bg-slate-950 hover:bg-slate-800 border border-slate-800 text-left transition-colors"
-            >
-              <span className="font-bold text-white block">🍳 Kitchen Mgr</span>
-              <span className="text-[10px] text-slate-400 font-mono">kitchen@chaatkulture.com</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleQuickFill('shahpura@chaatkulture.com', 'Staff@2026')}
-              className="p-2 rounded-xl bg-slate-950 hover:bg-slate-800 border border-slate-800 text-left transition-colors"
-            >
-              <span className="font-bold text-white block">🏪 Shahpura Staff</span>
-              <span className="text-[10px] text-slate-400 font-mono">shahpura@chaatkulture.com</span>
-            </button>
           </div>
         </div>
       </div>

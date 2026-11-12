@@ -80,7 +80,7 @@ export const Header: React.FC = () => {
               : syncStatus.target === 'cloud_only'
               ? 'Supabase Cloud'
               : syncStatus.target === 'local_only'
-              ? 'Port 3001 Synced'
+              ? 'Server Synced'
               : 'Offline (Local)'}
           </span>
 
