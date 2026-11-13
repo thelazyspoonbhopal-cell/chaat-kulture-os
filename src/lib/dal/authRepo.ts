@@ -62,12 +62,14 @@ export const authRepo = {
     // Pull from Global Cloud Registry so that ANY new browser can immediately authenticate newly created staff
     let cloudUsers: UserProfile[] = [];
     try {
-      const cRes = await fetch('https://api.restful-api.dev/objects/ff808181a09d98f701a1d4bdf72220eb', { cache: 'no-store' });
-      if (cRes.ok) {
-        const cData = await cRes.json();
-        if (cData && cData.data && cData.data.json) {
-          const parsed = JSON.parse(cData.data.json);
-          if (Array.isArray(parsed)) cloudUsers = parsed;
+      const cData = await usersRepo.fetchCloudUsers();
+      if (cData && Array.isArray(cData.users)) {
+        cloudUsers = cData.users;
+        // Immediately persist to local Dexie & localStorage so subsequent offline checks work
+        for (const cu of cloudUsers) {
+          if (cu && cu.id) {
+            await db.user_profiles.put(cu).catch(() => {});
+          }
         }
       }
     } catch {}
