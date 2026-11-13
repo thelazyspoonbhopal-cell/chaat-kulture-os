@@ -434,6 +434,7 @@ export const purchasesRepo = {
       [
         db.purchases,
         db.suppliers,
+        db.supplier_payments,
         db.inventory_balances,
         db.inventory_movements,
         db.audit_logs,
