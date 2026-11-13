@@ -122,7 +122,8 @@ const INITIAL_DATABASE = {
   sales: [],
   daily_closings: [],
   cash_transfers_to_owner: [],
-  audit_logs: []
+  audit_logs: [],
+  user_profiles: []
 };
 
 class LocalDatabase {

@@ -297,6 +297,24 @@ const server = http.createServer(async (req, res) => {
       return jsonResponse(res, 200, { success: true, ...result });
     }
 
+    // 14. Users & Staff Profiles
+    if (pathname === '/api/users') {
+      if (method === 'GET') {
+        return jsonResponse(res, 200, localDb.getCollection('user_profiles'));
+      }
+      if (method === 'POST') {
+        const body = await parseBody(req);
+        const existing = localDb.getCollection('user_profiles').find(u => u.id === body.id || (body.email && u.email === body.email));
+        if (existing) {
+          const updated = localDb.update('user_profiles', existing.id, body);
+          return jsonResponse(res, 200, updated || existing);
+        } else {
+          const created = localDb.insert('user_profiles', body);
+          return jsonResponse(res, 201, created);
+        }
+      }
+    }
+
     // 404 for unknown endpoints
     return jsonResponse(res, 404, { error: 'Endpoint not found', path: pathname });
   } catch (error) {

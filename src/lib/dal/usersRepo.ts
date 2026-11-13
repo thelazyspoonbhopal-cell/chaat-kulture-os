@@ -25,12 +25,28 @@ const INITIAL_DEFAULT_USERS: UserProfile[] = [
     phone: '9826000000',
     role: 'manager',
     password_salt: 'ck_salt_aakash_01',
-    password_hash: '',
+    password_hash: '2224a026a9892f2f85fbad5dcefc29e653d1900b461c5f5dda9c25ce1dbef7fa', // Aakash@1234
     assigned_location_ids: ['loc_base_01', 'loc_stor_02', 'loc_shah_03', 'loc_11no_04'],
     assigned_location_id: 'loc_base_01',
     pin_hash: '1234',
     is_active: true,
     notes: 'Operations Manager overseeing multi-outlet operations.',
+    created_at: new Date('2026-01-01').toISOString(),
+  },
+  {
+    id: 'usr_saurabh',
+    business_id: 'biz_chaatkulture_01',
+    full_name: 'Saurabh',
+    email: 'saurabh@chaatkulture.com',
+    phone: '9826000007',
+    role: 'outlet_staff',
+    password_salt: 'ck_salt_saurabh_01',
+    password_hash: 'c69c96935266d43097afbefef1c038570ed07de2d168ccf6e7cb62ec1983c9e0', // Staff@2026 or Saurabh@1234
+    assigned_location_ids: ['loc_shah_03'],
+    assigned_location_id: 'loc_shah_03',
+    pin_hash: '2026',
+    is_active: true,
+    notes: 'Frontline staff member assigned to Shahpura outlet.',
     created_at: new Date('2026-01-01').toISOString(),
   },
   {
@@ -113,11 +129,44 @@ const INITIAL_DEFAULT_USERS: UserProfile[] = [
   },
 ];
 
+const STORAGE_KEY_CUSTOM_USERS = 'ck_custom_users_registry';
+
+function getStoredCustomUsers(): UserProfile[] {
+  if (typeof window === 'undefined' || !window.localStorage) return [];
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY_CUSTOM_USERS);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveStoredCustomUsers(users: UserProfile[]): void {
+  if (typeof window === 'undefined' || !window.localStorage) return;
+  try {
+    window.localStorage.setItem(STORAGE_KEY_CUSTOM_USERS, JSON.stringify(users));
+  } catch {}
+}
+
 export const usersRepo = {
   async getAll(): Promise<UserProfile[]> {
     let list = await db.user_profiles.toArray();
+    const stored = getStoredCustomUsers();
+
+    // Merge persistent localStorage users into Dexie list if missing
+    for (const s of stored) {
+      const exists = list.some(
+        u => u.id === s.id || (s.email && (u.email || '').trim().toLowerCase() === s.email.trim().toLowerCase())
+      );
+      if (!exists) {
+        list.push(s);
+        await db.user_profiles.put(s).catch(() => {});
+      }
+    }
+
     if (list.length === 0) {
       await db.user_profiles.bulkPut(INITIAL_DEFAULT_USERS);
+      saveStoredCustomUsers(INITIAL_DEFAULT_USERS);
       return INITIAL_DEFAULT_USERS;
     }
 
@@ -184,11 +233,18 @@ export const usersRepo = {
       await db.user_profiles.bulkPut(sanitized);
     }
 
+    // Keep localStorage in sync
+    saveStoredCustomUsers(sanitized);
+
     return sanitized;
   },
 
   async getById(id: string): Promise<UserProfile | undefined> {
-    const u = await db.user_profiles.get(id);
+    let u = await db.user_profiles.get(id);
+    if (!u) {
+      const stored = getStoredCustomUsers();
+      u = stored.find(s => s.id === id);
+    }
     if (!u) return undefined;
     if (!u.assigned_location_ids || u.assigned_location_ids.length === 0) {
       u.assigned_location_ids = u.assigned_location_id ? [u.assigned_location_id] : [];
@@ -197,18 +253,20 @@ export const usersRepo = {
   },
 
   async add(user: Omit<UserProfile, 'id' | 'created_at'>): Promise<UserProfile> {
-    const cleanEmail = (user.email || '').trim().toLowerCase();
+    const rawEmail = (user.email || '').trim().toLowerCase();
+    const cleanEmail = rawEmail.includes('@') ? rawEmail : (rawEmail ? `${rawEmail}@chaatkulture.com` : '');
     const cleanPhone = (user.phone || '').replace(/[^0-9]/g, '');
 
-    const allUsers = await db.user_profiles.toArray();
+    const allUsers = await this.getAll();
     const existing = allUsers.find(
       u =>
         (cleanEmail && (u.email || '').trim().toLowerCase() === cleanEmail) ||
+        (rawEmail && (u.email || '').trim().toLowerCase() === rawEmail) ||
         (cleanPhone.length >= 10 && (u.phone || '').replace(/[^0-9]/g, '').endsWith(cleanPhone.slice(-10)))
     );
 
     if (existing) {
-      return await this.update(existing.id, user);
+      return await this.update(existing.id, { ...user, email: cleanEmail || rawEmail });
     }
 
     const now = new Date().toISOString();
@@ -222,17 +280,37 @@ export const usersRepo = {
     const newUser: UserProfile = {
       ...user,
       id,
+      email: cleanEmail || rawEmail,
       assigned_location_ids: locIds,
       assigned_location_id: locIds[0] || 'loc_shah_03',
       created_at: now,
     };
 
     await db.user_profiles.put(newUser);
+
+    // Persist to localStorage registry
+    const stored = getStoredCustomUsers().filter(u => u.id !== newUser.id && u.email !== newUser.email);
+    stored.push(newUser);
+    saveStoredCustomUsers(stored);
+
+    // Sync to backend if accessible
+    try {
+      fetch('/api/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newUser),
+      }).catch(() => {});
+    } catch {}
+
     return newUser;
   },
 
   async update(id: string, updates: Partial<UserProfile>): Promise<UserProfile> {
-    const existing = await db.user_profiles.get(id);
+    let existing = await db.user_profiles.get(id);
+    if (!existing) {
+      const stored = getStoredCustomUsers();
+      existing = stored.find(s => s.id === id);
+    }
     if (!existing) {
       throw new Error(`User with ID ${id} not found.`);
     }
@@ -252,6 +330,26 @@ export const usersRepo = {
     };
 
     await db.user_profiles.put(merged);
+
+    // Update localStorage
+    const stored = getStoredCustomUsers();
+    const idx = stored.findIndex(u => u.id === id);
+    if (idx >= 0) {
+      stored[idx] = merged;
+    } else {
+      stored.push(merged);
+    }
+    saveStoredCustomUsers(stored);
+
+    // Sync to backend
+    try {
+      fetch('/api/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(merged),
+      }).catch(() => {});
+    } catch {}
+
     return merged;
   },
 

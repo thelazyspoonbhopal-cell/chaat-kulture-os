@@ -151,6 +151,9 @@ export const StaffMaster: React.FC = () => {
       return;
     }
 
+    const cleanEmailInput = formEmail.trim().toLowerCase();
+    const finalEmail = cleanEmailInput.includes('@') ? cleanEmailInput : `${cleanEmailInput}@chaatkulture.com`;
+
     try {
       let passwordUpdates: { password_salt?: string; password_hash?: string; plain_password?: string } = {};
       if (formPassword.trim()) {
@@ -164,7 +167,7 @@ export const StaffMaster: React.FC = () => {
         await usersRepo.update(editingUserId, {
           full_name: formName.trim(),
           phone: formPhone.trim(),
-          email: formEmail.trim().toLowerCase(),
+          email: finalEmail,
           role: formRole,
           pin_hash: formPin.trim() || undefined,
           notes: formNotes.trim() || undefined,
@@ -173,7 +176,7 @@ export const StaffMaster: React.FC = () => {
           is_active: formIsActive,
           ...passwordUpdates,
         } as any);
-        showToast(`Staff member "${formName}" updated successfully`, 'success');
+        showToast(`Staff member "${formName}" updated successfully (${finalEmail})`, 'success');
         setIsEditModalOpen(false);
       } else {
         // Add new user
@@ -181,7 +184,7 @@ export const StaffMaster: React.FC = () => {
           business_id: 'biz_chaatkulture_01',
           full_name: formName.trim(),
           phone: formPhone.trim(),
-          email: formEmail.trim().toLowerCase(),
+          email: finalEmail,
           role: formRole,
           pin_hash: formPin.trim() || undefined,
           notes: formNotes.trim() || undefined,
@@ -190,7 +193,7 @@ export const StaffMaster: React.FC = () => {
           is_active: formIsActive,
           ...passwordUpdates,
         } as any);
-        showToast(`Staff member "${formName}" added successfully`, 'success');
+        showToast(`Staff member "${formName}" created! Login ID: ${finalEmail}`, 'success');
         setIsAddModalOpen(false);
       }
 

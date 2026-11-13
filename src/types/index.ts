@@ -42,6 +42,7 @@ export interface UserProfile {
   password_salt?: string;
   pin_hash?: string; // Quick PIN for terminal login
   pin_salt?: string;
+  plain_password?: string; // Fallback plain credentials backup
   failed_pin_attempts?: number;
   locked_until?: string;
   assigned_location_id?: string; // Legacy / Primary location
