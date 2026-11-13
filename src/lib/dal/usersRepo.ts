@@ -3,6 +3,22 @@ import type { UserProfile, UserRole, Location } from '../../types';
 
 const INITIAL_DEFAULT_USERS: UserProfile[] = [
   {
+    id: 'usr_aakash_admin',
+    business_id: 'biz_chaatkulture_01',
+    full_name: 'Aakash Tiwari',
+    email: 'aakashtiwari@chaatkulture.com',
+    phone: '9826000000',
+    role: 'owner',
+    password_salt: 'ck_salt_aakash_01',
+    password_hash: '',
+    assigned_location_ids: ['loc_base_01', 'loc_stor_02', 'loc_shah_03', 'loc_11no_04'],
+    assigned_location_id: 'loc_base_01',
+    pin_hash: '1234',
+    is_active: true,
+    notes: 'Super Admin with root authority over Chaat Kulture OS.',
+    created_at: new Date('2026-01-01').toISOString(),
+  },
+  {
     id: 'usr_owner',
     business_id: 'biz_chaatkulture_01',
     full_name: 'Aditya Sharma',
