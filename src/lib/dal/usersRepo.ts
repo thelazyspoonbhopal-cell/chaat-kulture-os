@@ -326,19 +326,7 @@ export const usersRepo = {
   async add(user: Omit<UserProfile, 'id' | 'created_at'>): Promise<UserProfile> {
     const rawEmail = (user.email || '').trim().toLowerCase();
     const cleanEmail = rawEmail.includes('@') ? rawEmail : (rawEmail ? `${rawEmail}@chaatkulture.com` : '');
-    const cleanPhone = (user.phone || '').replace(/[^0-9]/g, '');
-
-    const allUsers = await this.getAll();
-    const existing = allUsers.find(
-      u =>
-        (cleanEmail && (u.email || '').trim().toLowerCase() === cleanEmail) ||
-        (rawEmail && (u.email || '').trim().toLowerCase() === rawEmail) ||
-        (cleanPhone.length >= 10 && (u.phone || '').replace(/[^0-9]/g, '').endsWith(cleanPhone.slice(-10)))
-    );
-
-    if (existing) {
-      return await this.update(existing.id, { ...user, email: cleanEmail || rawEmail });
-    }
+    const cleanPhone = (user.phone || '').trim();
 
     const now = new Date().toISOString();
     const id = 'usr_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6);
@@ -352,19 +340,24 @@ export const usersRepo = {
       ...user,
       id,
       email: cleanEmail || rawEmail,
+      phone: cleanPhone || user.phone || '9826000000',
       assigned_location_ids: locIds,
       assigned_location_id: locIds[0] || 'loc_shah_03',
       created_at: now,
     };
 
-    // If previously deleted, unrecord tombstone
-    unrecordDeletedUser(newUser.id, newUser.email);
-    unrecordDeletedUser(newUser.id, rawEmail);
+    // If previously deleted or tombstoned, clear tombstone
+    unrecordDeletedUser(newUser.id);
+    if (newUser.email) unrecordDeletedUser(newUser.email);
+    if (rawEmail) unrecordDeletedUser(rawEmail);
 
+    // Save to IndexedDB
     await db.user_profiles.put(newUser);
 
     // Persist to localStorage registry
-    const stored = getStoredCustomUsers().filter(u => u.id !== newUser.id && u.email !== newUser.email);
+    const stored = getStoredCustomUsers().filter(
+      u => u.id !== newUser.id && (u.email || '').toLowerCase().trim() !== (newUser.email || '').toLowerCase().trim()
+    );
     stored.push(newUser);
     saveStoredCustomUsers(stored);
 

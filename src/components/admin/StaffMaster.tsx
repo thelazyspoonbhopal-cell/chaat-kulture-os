@@ -180,7 +180,7 @@ export const StaffMaster: React.FC = () => {
         setIsEditModalOpen(false);
       } else {
         // Add new user
-        await usersRepo.add({
+        const newUser = await usersRepo.add({
           business_id: 'biz_chaatkulture_01',
           full_name: formName.trim(),
           phone: formPhone.trim(),
@@ -193,6 +193,13 @@ export const StaffMaster: React.FC = () => {
           is_active: formIsActive,
           ...passwordUpdates,
         } as any);
+
+        // Update state immediately so it renders at the top of the table right away
+        setUsersList(prev => [newUser, ...prev.filter(u => u.id !== newUser.id && u.email !== newUser.email)]);
+        setSearchQuery('');
+        setSelectedRoleFilter('all');
+        setSelectedLocationFilter('all');
+
         showToast(`Staff member "${formName}" created! Login ID: ${finalEmail}`, 'success');
         setIsAddModalOpen(false);
       }
