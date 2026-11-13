@@ -37,9 +37,21 @@ export const menuRepo = {
   },
 
   async addMenuItem(item: Omit<MenuItem, 'id' | 'created_at' | 'updated_at'>): Promise<MenuItem> {
+    const trimmedCode = item.code?.trim();
+    if (trimmedCode) {
+      const allItems = await db.menu_items.toArray();
+      const conflict = allItems.find(
+        i => i.code && i.code.trim().toLowerCase() === trimmedCode.toLowerCase()
+      );
+      if (conflict) {
+        throw new Error(`Item code "${trimmedCode}" already exists for "${conflict.name}". Every menu item must have a unique code.`);
+      }
+    }
+
     const now = new Date().toISOString();
     const newItem: MenuItem = {
       ...item,
+      code: trimmedCode || undefined,
       id: 'mi_' + Date.now(),
       business_id: 'biz_chaatkulture_01',
       created_at: now,
@@ -63,24 +75,36 @@ export const menuRepo = {
 
   async updateMenuItem(id: string, updates: Partial<MenuItem>): Promise<void> {
     const existing = await db.menu_items.get(id);
+    if (!existing) throw new Error('Menu item not found');
+
+    const trimmedCode = updates.code !== undefined ? updates.code?.trim() : existing.code?.trim();
+    if (trimmedCode) {
+      const allItems = await db.menu_items.toArray();
+      const conflict = allItems.find(
+        i => i.id !== id && i.code && i.code.trim().toLowerCase() === trimmedCode.toLowerCase()
+      );
+      if (conflict) {
+        throw new Error(`Item code "${trimmedCode}" already exists for "${conflict.name}". Every menu item must have a unique code.`);
+      }
+    }
+
     const now = new Date().toISOString();
     await db.menu_items.update(id, {
       ...updates,
+      code: trimmedCode || undefined,
       updated_at: now,
     });
 
-    if (existing) {
-      await db.audit_logs.put({
-        id: 'audit_' + Date.now(),
-        business_id: 'biz_chaatkulture_01',
-        action: 'UPDATE_MENU_ITEM',
-        entity: 'menu_items',
-        entity_id: id,
-        old_data: existing,
-        new_data: { ...existing, ...updates },
-        created_at: now,
-      });
-    }
+    await db.audit_logs.put({
+      id: 'audit_' + Date.now(),
+      business_id: 'biz_chaatkulture_01',
+      action: 'UPDATE_MENU_ITEM',
+      entity: 'menu_items',
+      entity_id: id,
+      old_data: existing,
+      new_data: { ...existing, ...updates, code: trimmedCode || undefined },
+      created_at: now,
+    });
   },
 
   async toggleAvailability(id: string, is_available: boolean): Promise<void> {

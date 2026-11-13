@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { inventoryRepo } from '../../lib/dal/inventoryRepo';
 import { suppliersRepo } from '../../lib/dal/suppliersRepo';
@@ -8,7 +8,7 @@ import { Select } from '../ui/Select';
 import { Modal } from '../ui/Modal';
 import { Badge } from '../ui/Badge';
 import { EmptyState } from '../ui/EmptyState';
-import { Plus, Search, Boxes, Edit2, AlertCircle } from 'lucide-react';
+import { Plus, Search, Boxes, Edit2, AlertCircle, Sparkles } from 'lucide-react';
 import type { InventoryItem, InventoryCategory, Unit, Supplier, InventoryCategoryType } from '../../types';
 
 export const InventoryMaster: React.FC = () => {
@@ -83,10 +83,50 @@ export const InventoryMaster: React.FC = () => {
     setIsItemModalOpen(true);
   };
 
+  const invCodeConflict = useMemo(() => {
+    const code = formCode.trim().toLowerCase();
+    if (!code) return null;
+    return items.find(
+      i => i.id !== editingItem?.id && i.code && i.code.trim().toLowerCase() === code
+    );
+  }, [formCode, items, editingItem]);
+
+  const generateUniqueInvCode = (name: string, type: InventoryCategoryType) => {
+    const prefixMap: Record<InventoryCategoryType, string> = {
+      raw_material: 'RAW',
+      prepared_food: 'PRP',
+      semi_prepared: 'SMP',
+      packaging: 'PKG',
+      disposables: 'DSP',
+      consumables: 'CSM',
+      other: 'OTH',
+    };
+    const pfx = prefixMap[type] || 'INV';
+    const clean = name.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+    const tag = clean.slice(0, 3) || 'ITM';
+    let counter = 1;
+    let candidate = `${pfx}-${tag}-${String(counter).padStart(2, '0')}`;
+    while (items.some(i => i.id !== editingItem?.id && i.code?.trim().toLowerCase() === candidate.toLowerCase())) {
+      counter++;
+      candidate = `${pfx}-${tag}-${String(counter).padStart(2, '0')}`;
+    }
+    return candidate;
+  };
+
   const handleSaveItem = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formName.trim()) {
       showToast('Item name is required', 'warning');
+      return;
+    }
+
+    if (!formCode.trim()) {
+      showToast('Item code is required. Every inventory item must have a unique code.', 'warning');
+      return;
+    }
+
+    if (invCodeConflict) {
+      showToast(`Item code "${formCode.trim()}" is already assigned to "${invCodeConflict.name}". Every item must have a unique code!`, 'error');
       return;
     }
 
@@ -97,7 +137,7 @@ export const InventoryMaster: React.FC = () => {
       if (editingItem) {
         await inventoryRepo.updateItem(editingItem.id, {
           name: formName.trim(),
-          code: formCode.trim(),
+          code: formCode.trim().toUpperCase(),
           category_type: formType,
           base_unit: formBaseUnit,
           min_stock_alert: minAlertNum,
@@ -110,7 +150,7 @@ export const InventoryMaster: React.FC = () => {
           business_id: 'biz_chaatkulture_01',
           category_id: 'default',
           name: formName.trim(),
-          code: formCode.trim(),
+          code: formCode.trim().toUpperCase(),
           category_type: formType,
           base_unit: formBaseUnit,
           min_stock_alert: minAlertNum,
@@ -124,9 +164,9 @@ export const InventoryMaster: React.FC = () => {
       setIsItemModalOpen(false);
       await loadData();
       await refreshData();
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      showToast('Error saving inventory item', 'error');
+      showToast(err.message || 'Error saving inventory item', 'error');
     }
   };
 
@@ -332,12 +372,31 @@ export const InventoryMaster: React.FC = () => {
               onChange={e => setFormName(e.target.value)}
               required
             />
-            <Input
-              label="Item Code (Optional)"
-              placeholder="e.g. RAW-BUT-01"
-              value={formCode}
-              onChange={e => setFormCode(e.target.value)}
-            />
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs font-semibold text-slate-300">Item Code *</label>
+                <button
+                  type="button"
+                  onClick={() => setFormCode(generateUniqueInvCode(formName, formType))}
+                  className="text-[10px] text-orange-400 hover:text-orange-300 flex items-center gap-1 font-medium transition-colors"
+                >
+                  <Sparkles className="w-3 h-3" /> Auto-Code
+                </button>
+              </div>
+              <Input
+                placeholder="e.g. RAW-BUT-01"
+                value={formCode}
+                onChange={e => setFormCode(e.target.value.toUpperCase())}
+                required
+                className={invCodeConflict ? '!border-rose-500' : ''}
+              />
+              {invCodeConflict && (
+                <p className="text-[11px] text-rose-400 mt-1 flex items-center gap-1 font-semibold">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                  Code already in use by "{invCodeConflict.name}"
+                </p>
+              )}
+            </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

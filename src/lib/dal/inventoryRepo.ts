@@ -44,9 +44,21 @@ export const inventoryRepo = {
   },
 
   async addItem(item: Omit<InventoryItem, 'id' | 'created_at'>): Promise<InventoryItem> {
+    const trimmedCode = item.code?.trim();
+    if (trimmedCode) {
+      const allItems = await db.inventory_items.toArray();
+      const conflict = allItems.find(
+        i => i.code && i.code.trim().toLowerCase() === trimmedCode.toLowerCase()
+      );
+      if (conflict) {
+        throw new Error(`Item code "${trimmedCode}" already exists for "${conflict.name}". Every inventory item must have a unique code.`);
+      }
+    }
+
     const now = new Date().toISOString();
     const newItem: InventoryItem = {
       ...item,
+      code: trimmedCode || undefined,
       id: 'inv_' + Date.now(),
       business_id: 'biz_chaatkulture_01',
       created_at: now,
@@ -82,24 +94,36 @@ export const inventoryRepo = {
 
   async updateItem(id: string, updates: Partial<InventoryItem>): Promise<void> {
     const existing = await db.inventory_items.get(id);
+    if (!existing) throw new Error('Inventory item not found');
+
+    const trimmedCode = updates.code !== undefined ? updates.code?.trim() : existing.code?.trim();
+    if (trimmedCode) {
+      const allItems = await db.inventory_items.toArray();
+      const conflict = allItems.find(
+        i => i.id !== id && i.code && i.code.trim().toLowerCase() === trimmedCode.toLowerCase()
+      );
+      if (conflict) {
+        throw new Error(`Item code "${trimmedCode}" already exists for "${conflict.name}". Every inventory item must have a unique code.`);
+      }
+    }
+
     const now = new Date().toISOString();
     await db.inventory_items.update(id, {
       ...updates,
+      code: trimmedCode || undefined,
       updated_at: now,
     });
 
-    if (existing) {
-      await db.audit_logs.put({
-        id: 'audit_' + Date.now(),
-        business_id: 'biz_chaatkulture_01',
-        action: 'UPDATE_INVENTORY_ITEM',
-        entity: 'inventory_items',
-        entity_id: id,
-        old_data: existing,
-        new_data: { ...existing, ...updates },
-        created_at: now,
-      });
-    }
+    await db.audit_logs.put({
+      id: 'audit_' + Date.now(),
+      business_id: 'biz_chaatkulture_01',
+      action: 'UPDATE_INVENTORY_ITEM',
+      entity: 'inventory_items',
+      entity_id: id,
+      old_data: existing,
+      new_data: { ...existing, ...updates, code: trimmedCode || undefined },
+      created_at: now,
+    });
   },
 
   // Balances

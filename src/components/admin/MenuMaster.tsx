@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { menuRepo } from '../../lib/dal/menuRepo';
 import { Button } from '../ui/Button';
@@ -7,7 +7,7 @@ import { Select } from '../ui/Select';
 import { Modal } from '../ui/Modal';
 import { Badge } from '../ui/Badge';
 import { EmptyState } from '../ui/EmptyState';
-import { Plus, Search, Utensils, Edit2, ToggleLeft, ToggleRight, Trash2 } from 'lucide-react';
+import { Plus, Search, Utensils, Edit2, ToggleLeft, ToggleRight, Trash2, Sparkles, AlertCircle } from 'lucide-react';
 import type { MenuCategory, MenuItem } from '../../types';
 
 export const MenuMaster: React.FC = () => {
@@ -85,10 +85,45 @@ export const MenuMaster: React.FC = () => {
     setIsItemModalOpen(true);
   };
 
+  const menuCodeConflict = useMemo(() => {
+    const code = formCode.trim().toLowerCase();
+    if (!code) return null;
+    return items.find(
+      i => i.id !== editingItem?.id && i.code && i.code.trim().toLowerCase() === code
+    );
+  }, [formCode, items, editingItem]);
+
+  const generateUniqueMenuCode = (name: string) => {
+    const clean = name.replace(/[^a-zA-Z0-9\s]/g, '').trim();
+    const initials = clean
+      .split(/\s+/)
+      .filter(Boolean)
+      .map(w => w[0].toUpperCase())
+      .join('')
+      .slice(0, 3) || 'DS';
+    let counter = 1;
+    let candidate = `${initials}-${String(counter).padStart(2, '0')}`;
+    while (items.some(i => i.id !== editingItem?.id && i.code?.trim().toLowerCase() === candidate.toLowerCase())) {
+      counter++;
+      candidate = `${initials}-${String(counter).padStart(2, '0')}`;
+    }
+    return candidate;
+  };
+
   const handleSaveItem = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formName.trim() || !formBasePrice) {
       showToast('Item name and base price are required', 'warning');
+      return;
+    }
+
+    if (!formCode.trim()) {
+      showToast('Item code is required. Every item must have a unique code.', 'warning');
+      return;
+    }
+
+    if (menuCodeConflict) {
+      showToast(`Item code "${formCode.trim()}" is already assigned to "${menuCodeConflict.name}". Every dish must have a unique code!`, 'error');
       return;
     }
 
@@ -106,7 +141,7 @@ export const MenuMaster: React.FC = () => {
       if (editingItem) {
         await menuRepo.updateMenuItem(editingItem.id, {
           name: formName.trim(),
-          code: formCode.trim(),
+          code: formCode.trim().toUpperCase(),
           category_id: formCatId,
           base_price: basePriceNum,
           tax_rate: taxRateNum,
@@ -123,7 +158,7 @@ export const MenuMaster: React.FC = () => {
         await menuRepo.addMenuItem({
           business_id: 'biz_chaatkulture_01',
           name: formName.trim(),
-          code: formCode.trim(),
+          code: formCode.trim().toUpperCase(),
           category_id: formCatId,
           base_price: basePriceNum,
           tax_rate: taxRateNum,
@@ -143,9 +178,9 @@ export const MenuMaster: React.FC = () => {
       setIsItemModalOpen(false);
       await loadData();
       await refreshData();
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      showToast('Error saving menu item', 'error');
+      showToast(err.message || 'Error saving menu item', 'error');
     }
   };
 
@@ -372,12 +407,31 @@ export const MenuMaster: React.FC = () => {
               onChange={e => setFormName(e.target.value)}
               required
             />
-            <Input
-              label="Item Code (Optional)"
-              placeholder="e.g. DP-01"
-              value={formCode}
-              onChange={e => setFormCode(e.target.value)}
-            />
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs font-semibold text-slate-300">Item Code *</label>
+                <button
+                  type="button"
+                  onClick={() => setFormCode(generateUniqueMenuCode(formName))}
+                  className="text-[10px] text-orange-400 hover:text-orange-300 flex items-center gap-1 font-medium transition-colors"
+                >
+                  <Sparkles className="w-3 h-3" /> Auto-Code
+                </button>
+              </div>
+              <Input
+                placeholder="e.g. DP-01"
+                value={formCode}
+                onChange={e => setFormCode(e.target.value.toUpperCase())}
+                required
+                className={menuCodeConflict ? '!border-rose-500' : ''}
+              />
+              {menuCodeConflict && (
+                <p className="text-[11px] text-rose-400 mt-1 flex items-center gap-1 font-semibold">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                  Code already in use by "{menuCodeConflict.name}"
+                </p>
+              )}
+            </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
