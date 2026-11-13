@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { authRepo, type LoginResult } from '../../lib/dal/authRepo';
+import { usersRepo } from '../../lib/dal/usersRepo';
+import type { UserProfile } from '../../types';
 import { authSecurity, type GeoLocationResult } from '../../lib/security/authSecurity';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
@@ -34,6 +36,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [availableUsers, setAvailableUsers] = useState<UserProfile[]>([]);
+  const [showAccountsHelper, setShowAccountsHelper] = useState(false);
 
   // Geolocation state
   const [locationStatus, setLocationStatus] = useState<'prompt' | 'granted' | 'denied' | 'checking'>('prompt');
@@ -67,6 +71,9 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
 
   useEffect(() => {
     checkLocation();
+    usersRepo.getAll().then(list => {
+      setAvailableUsers(list.filter(u => u.is_active));
+    }).catch(() => {});
   }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -297,6 +304,61 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
               <Lock className="w-4 h-4 mr-2" />
               <span>{isSubmitting ? 'Verifying Credentials...' : 'Authenticate & Enter'}</span>
             </Button>
+
+            {/* Quick-Select Staff Accounts Helper */}
+            {availableUsers.length > 0 && (
+              <div className="pt-1">
+                <button
+                  type="button"
+                  onClick={() => setShowAccountsHelper(!showAccountsHelper)}
+                  className="w-full text-center text-[11px] text-orange-400 hover:text-orange-300 font-semibold py-1.5 px-2 rounded-xl bg-orange-950/30 border border-orange-800/40 hover:bg-orange-950/50 transition-all flex items-center justify-center gap-1.5"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-orange-400" />
+                  <span>{showAccountsHelper ? 'Hide Registered Staff Accounts' : `Tap to Pick from Registered Accounts (${availableUsers.length})`}</span>
+                </button>
+
+                {showAccountsHelper && (
+                  <div className="mt-2 p-2 bg-slate-950 border border-slate-800 rounded-2xl space-y-1.5 max-h-52 overflow-y-auto">
+                    <p className="text-[10px] text-slate-400 px-1 font-semibold uppercase tracking-wider">
+                      Tap any account to auto-fill login credentials:
+                    </p>
+                    {availableUsers.map(u => (
+                      <div
+                        key={u.id}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => {
+                          setEmail(u.email || u.phone);
+                          if (u.plain_password) {
+                            setPassword(u.plain_password);
+                          } else if (u.pin_hash) {
+                            setPassword(u.pin_hash);
+                          }
+                          setErrorMessage(null);
+                        }}
+                        onKeyDown={e => {
+                          if (e.key === ' ' || e.key === 'Enter') {
+                            setEmail(u.email || u.phone);
+                            if (u.plain_password) setPassword(u.plain_password);
+                          }
+                        }}
+                        className="p-2 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-800 hover:border-orange-500/50 cursor-pointer flex items-center justify-between text-xs transition-all"
+                      >
+                        <div className="min-w-0 pr-2">
+                          <p className="font-bold text-white truncate text-xs">{u.full_name}</p>
+                          <p className="text-[11px] text-slate-400 font-mono truncate">{u.email || u.phone}</p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <span className="text-[9px] uppercase px-1.5 py-0.5 rounded font-mono font-bold bg-orange-950/80 text-orange-400 border border-orange-900/60">
+                            {u.role.replace('_', ' ')}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </form>
 
           {/* Security Notice */}
