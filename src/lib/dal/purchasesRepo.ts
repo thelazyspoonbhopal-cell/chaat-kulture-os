@@ -405,30 +405,166 @@ export const purchasesRepo = {
       invoice_number?: string;
       invoice_date?: string;
       notes?: string;
+      items?: {
+        inventory_item_id: string;
+        item_name: string;
+        quantity: number;
+        unit: string;
+        rate: number;
+        tax_amount: number;
+        total_amount: number;
+      }[];
     },
-    updatedBy?: string
+    updatedBy: string = 'admin'
   ): Promise<Purchase> {
     const existing = await db.purchases.get(id);
     if (!existing) throw new Error('Purchase invoice not found');
 
     const now = new Date().toISOString();
-    const updated: Purchase = {
-      ...existing,
-      ...updates,
-    };
+    const clientTxId = 'tx_edit_pur_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
 
-    await db.purchases.put(updated);
-    await db.audit_logs.put({
-      id: 'audit_' + Date.now(),
-      business_id: existing.business_id,
-      action: 'UPDATE_PURCHASE_INVOICE',
-      entity: 'purchases',
-      entity_id: id,
-      location_id: existing.receiving_location_id,
-      new_data: { updates, updatedBy },
-      created_at: now,
-    });
-    return updated;
+    let newItems = existing.items;
+    let newTotalAmount = existing.total_amount;
+    let newTaxAmount = existing.tax_amount;
+    let newOutstanding = existing.outstanding_balance;
+    let newPaymentStatus = existing.payment_status;
+
+    await db.transaction(
+      'rw',
+      [
+        db.purchases,
+        db.suppliers,
+        db.inventory_balances,
+        db.inventory_movements,
+        db.audit_logs,
+      ],
+      async () => {
+        // If items and quantities are being amended by Admin
+        if (updates.items && updates.items.length > 0) {
+          // 1. Calculate quantity changes and update inventory balances
+          const oldQtyMap: Record<string, number> = {};
+          (existing.items || []).forEach(it => {
+            oldQtyMap[it.inventory_item_id] = (oldQtyMap[it.inventory_item_id] || 0) + it.quantity;
+          });
+
+          const newQtyMap: Record<string, number> = {};
+          updates.items.forEach(it => {
+            newQtyMap[it.inventory_item_id] = (newQtyMap[it.inventory_item_id] || 0) + it.quantity;
+          });
+
+          const allItemIds = Array.from(new Set([...Object.keys(oldQtyMap), ...Object.keys(newQtyMap)]));
+
+          for (const itemId of allItemIds) {
+            const oldQty = oldQtyMap[itemId] || 0;
+            const newQty = newQtyMap[itemId] || 0;
+            const qtyDiff = newQty - oldQty;
+
+            if (qtyDiff !== 0) {
+              const balKey = `bal_${existing.receiving_location_id}_${itemId}`;
+              const existingBal = await db.inventory_balances.get(balKey);
+              const currentQty = existingBal ? existingBal.available_quantity : 0;
+              const newAvail = currentQty + qtyDiff;
+
+              await db.inventory_balances.put({
+                id: balKey,
+                business_id: existing.business_id,
+                location_id: existing.receiving_location_id,
+                inventory_item_id: itemId,
+                available_quantity: newAvail,
+                in_transit_quantity: existingBal ? existingBal.in_transit_quantity : 0,
+                last_updated: now,
+                last_updated_by: updatedBy,
+              });
+
+              // Movement audit entry
+              const itemInfo =
+                updates.items?.find(i => i.inventory_item_id === itemId) ||
+                existing.items?.find(i => i.inventory_item_id === itemId);
+
+              await db.inventory_movements.put({
+                id: 'mov_pur_adj_' + Date.now() + Math.random().toString(36).substr(2, 3),
+                client_tx_id: clientTxId,
+                business_id: existing.business_id,
+                location_id: existing.receiving_location_id,
+                inventory_item_id: itemId,
+                movement_type: qtyDiff > 0 ? 'purchase_receipt' : 'adjustment',
+                quantity_change: qtyDiff,
+                balance_after: newAvail,
+                unit: itemInfo?.unit || 'unit',
+                batch_reference: updates.invoice_number || existing.invoice_number,
+                notes: `PURCHASE QTY AMENDED: Invoice #${existing.invoice_number}. Qty changed from ${oldQty} to ${newQty} (${qtyDiff > 0 ? '+' : ''}${qtyDiff}).`,
+                reference_id: existing.id,
+                created_by: updatedBy,
+                created_at: now,
+              });
+            }
+          }
+
+          // 2. Recompute financial totals
+          newTaxAmount = updates.items.reduce((acc, it) => acc + (it.tax_amount || 0), 0);
+          const grossItemsTotal = updates.items.reduce((acc, it) => acc + it.total_amount, 0);
+          newTotalAmount = Math.max(0, grossItemsTotal - (existing.discount_amount || 0));
+          newOutstanding = Math.max(0, newTotalAmount - (existing.paid_amount || 0));
+          newPaymentStatus =
+            newOutstanding === 0 ? 'paid' : (existing.paid_amount || 0) > 0 ? 'partially_paid' : 'unpaid';
+
+          newItems = updates.items.map((it, idx) => ({
+            id: `pitm_${existing.id}_${idx}_${Date.now()}`,
+            purchase_id: existing.id,
+            inventory_item_id: it.inventory_item_id,
+            item_name: it.item_name,
+            quantity: it.quantity,
+            unit: it.unit,
+            rate: it.rate,
+            tax_amount: it.tax_amount,
+            total_amount: it.total_amount,
+          }));
+        }
+
+        // 3. Save updated purchase record
+        const updated: Purchase = {
+          ...existing,
+          invoice_number:
+            updates.invoice_number !== undefined ? updates.invoice_number.trim() : existing.invoice_number,
+          invoice_date: updates.invoice_date || existing.invoice_date,
+          notes: updates.notes !== undefined ? updates.notes : existing.notes,
+          items: newItems,
+          total_amount: newTotalAmount,
+          tax_amount: newTaxAmount,
+          outstanding_balance: newOutstanding,
+          payment_status: newPaymentStatus,
+        };
+
+        await db.purchases.put(updated);
+
+        // 4. Recalculate supplier balance
+        const [remainingPurchases, remainingPayments] = await Promise.all([
+          db.purchases.where('supplier_id').equals(existing.supplier_id).toArray(),
+          db.supplier_payments.where('supplier_id').equals(existing.supplier_id).toArray(),
+        ]);
+        const totalPurchases = remainingPurchases.reduce((sum, p) => sum + (p.total_amount || 0), 0);
+        const totalPayments = remainingPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+        const supplier = await db.suppliers.get(existing.supplier_id);
+        const netBalance = (supplier?.opening_balance || 0) + totalPurchases - totalPayments;
+        await db.suppliers.update(existing.supplier_id, {
+          current_outstanding: netBalance,
+        });
+
+        // 5. Audit Log
+        await db.audit_logs.put({
+          id: 'audit_' + Date.now(),
+          business_id: existing.business_id,
+          action: 'UPDATE_PURCHASE_INVOICE',
+          entity: 'purchases',
+          entity_id: id,
+          location_id: existing.receiving_location_id,
+          new_data: { updates, updatedBy },
+          created_at: now,
+        });
+      }
+    );
+
+    return (await db.purchases.get(id))!;
   },
 
   async deletePurchase(id: string, reason: string, deletedBy?: string): Promise<void> {

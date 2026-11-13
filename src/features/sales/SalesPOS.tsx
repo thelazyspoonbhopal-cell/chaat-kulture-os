@@ -46,8 +46,25 @@ export const SalesPOS: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [selectedChannel, setSelectedChannel] = useState<SalesChannel>('walk_in');
 
-  // Cart
-  const [cart, setCart] = useState<CartItem[]>([]);
+  // Cart with persistent auto-saved draft
+  const POS_DRAFT_KEY = 'ck_pos_draft_cart';
+  const [cart, setCart] = useState<CartItem[]>(() => {
+    try {
+      const saved = localStorage.getItem('ck_pos_draft_cart');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    if (cart.length > 0) {
+      localStorage.setItem(POS_DRAFT_KEY, JSON.stringify(cart));
+    } else {
+      localStorage.removeItem(POS_DRAFT_KEY);
+    }
+  }, [cart]);
+
   const [discountType, setDiscountType] = useState<'none' | 'fixed' | 'percentage'>('none');
   const [discountValue, setDiscountValue] = useState<number>(0);
   const [discountReason, setDiscountReason] = useState<string>('');

@@ -55,8 +55,10 @@ export const PurchasesManager: React.FC = () => {
   const [selectedSupplierId, setSelectedSupplierId] = useState<string>('');
   const [supplierLedgerData, setSupplierLedgerData] = useState<any>(null);
 
-  // Add Purchase Modal
+  // Add Purchase Modal & Auto-saved Draft
+  const DRAFT_KEY = 'ck_purchase_draft';
   const [isPurchaseModalOpen, setIsPurchaseModalOpen] = useState<boolean>(false);
+  const [isDraftRestored, setIsDraftRestored] = useState<boolean>(false);
   const [formSupplierId, setFormSupplierId] = useState<string>('');
   const [formLocationId, setFormLocationId] = useState<string>('loc_stor_02'); // Default Central Store Room
   const [formInvoiceNum, setFormInvoiceNum] = useState<string>('');
@@ -69,6 +71,11 @@ export const PurchasesManager: React.FC = () => {
     { itemId: string; qty: string; rate: string; taxRate: string }[]
   >([{ itemId: '', qty: '', rate: '', taxRate: '0' }]);
 
+  // Admin Item Quantity Editing State
+  const [editPurchaseLines, setEditPurchaseLines] = useState<
+    { itemId: string; itemName: string; unit: string; qty: string; rate: string; taxRate: string }[]
+  >([]);
+
   // Record Payment Modal
   const [isPayModalOpen, setIsPayModalOpen] = useState<boolean>(false);
   const [paySupId, setPaySupId] = useState<string>('');
@@ -77,6 +84,79 @@ export const PurchasesManager: React.FC = () => {
   const [payDate, setPayDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [payRef, setPayRef] = useState<string>('');
   const [payNotes, setPayNotes] = useState<string>('');
+
+  const openRecordPurchaseModal = () => {
+    try {
+      const saved = localStorage.getItem(DRAFT_KEY);
+      if (saved) {
+        const d = JSON.parse(saved);
+        if (d.supplierId) setFormSupplierId(d.supplierId);
+        if (d.locationId) setFormLocationId(d.locationId);
+        if (d.invoiceNum) setFormInvoiceNum(d.invoiceNum);
+        if (d.invoiceDate) setFormInvoiceDate(d.invoiceDate);
+        if (d.discount) setFormDiscount(d.discount);
+        if (d.paidAmount) setFormPaidAmount(d.paidAmount);
+        if (d.payMethod) setFormPayMethod(d.payMethod);
+        if (d.notes) setFormNotes(d.notes);
+        if (Array.isArray(d.lines) && d.lines.length > 0) setPurchaseLines(d.lines);
+        setIsDraftRestored(true);
+      } else {
+        setIsDraftRestored(false);
+      }
+    } catch {
+      setIsDraftRestored(false);
+    }
+    setIsPurchaseModalOpen(true);
+  };
+
+  const resetPurchaseForm = () => {
+    localStorage.removeItem(DRAFT_KEY);
+    setFormSupplierId(suppliers.length > 0 ? suppliers[0].id : '');
+    setFormLocationId('loc_stor_02');
+    setFormInvoiceNum('');
+    setFormInvoiceDate(new Date().toISOString().split('T')[0]);
+    setFormDiscount('0');
+    setFormPaidAmount('0');
+    setFormPayMethod('bank_transfer');
+    setFormNotes('');
+    setPurchaseLines([{ itemId: '', qty: '', rate: '', taxRate: '0' }]);
+    setIsDraftRestored(false);
+  };
+
+  // Auto-save draft on every change
+  useEffect(() => {
+    if (!isPurchaseModalOpen) return;
+    const hasContent =
+      formInvoiceNum.trim() ||
+      formNotes.trim() ||
+      purchaseLines.some(l => l.itemId || (l.qty && parseFloat(l.qty) > 0));
+
+    if (hasContent) {
+      const draft = {
+        supplierId: formSupplierId,
+        locationId: formLocationId,
+        invoiceNum: formInvoiceNum,
+        invoiceDate: formInvoiceDate,
+        discount: formDiscount,
+        paidAmount: formPaidAmount,
+        payMethod: formPayMethod,
+        notes: formNotes,
+        lines: purchaseLines,
+      };
+      localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+    }
+  }, [
+    isPurchaseModalOpen,
+    formSupplierId,
+    formLocationId,
+    formInvoiceNum,
+    formInvoiceDate,
+    formDiscount,
+    formPaidAmount,
+    formPayMethod,
+    formNotes,
+    purchaseLines,
+  ]);
 
   const loadData = async () => {
     try {
@@ -94,9 +174,6 @@ export const PurchasesManager: React.FC = () => {
         if (!selectedSupplierId) {
           setSelectedSupplierId(allSuppliers[0].id);
         }
-      }
-      if (allItems.length > 0 && !purchaseLines[0].itemId) {
-        setPurchaseLines([{ itemId: allItems[0].id, qty: '10', rate: (allItems[0].cost_per_unit || 50).toString(), taxRate: '0' }]);
       }
     } catch (err) {
       console.error(err);
@@ -161,10 +238,8 @@ export const PurchasesManager: React.FC = () => {
       });
 
       showToast(`Purchase Invoice #${created.invoice_number} recorded! Stock auto-inwarded to receiving location.`, 'success');
+      resetPurchaseForm();
       setIsPurchaseModalOpen(false);
-      setFormInvoiceNum('');
-      setFormPaidAmount('0');
-      setFormNotes('');
       await loadData();
     } catch (err) {
       console.error(err);
@@ -253,7 +328,7 @@ export const PurchasesManager: React.FC = () => {
             <span>+ Settle Supplier Dues</span>
           </Button>
 
-          <Button variant="primary" size="sm" onClick={() => setIsPurchaseModalOpen(true)}>
+          <Button variant="primary" size="sm" onClick={openRecordPurchaseModal}>
             <Plus className="w-3.5 h-3.5" />
             <span>+ Record Purchase Invoice</span>
           </Button>
@@ -314,7 +389,7 @@ export const PurchasesManager: React.FC = () => {
               title="No Purchase Invoices Found"
               description="Click '+ Record Purchase Invoice' to enter vendor purchase bills. Stock will automatically be added to your Central Store Room or receiving outlet."
               actionLabel="+ Record Purchase Bill"
-              onAction={() => setIsPurchaseModalOpen(true)}
+              onAction={openRecordPurchaseModal}
             />
           ) : (
             <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
@@ -415,8 +490,22 @@ export const PurchasesManager: React.FC = () => {
                                     setEditInvoiceNum(p.invoice_number);
                                     setEditInvoiceDate(p.invoice_date);
                                     setEditPurchaseNotes(p.notes || '');
+                                    setEditPurchaseLines(
+                                      (p.items || []).map(it => {
+                                        const gross = it.rate * it.quantity;
+                                        const taxPct = gross > 0 ? (((it.tax_amount || 0) / gross) * 100).toFixed(1) : '0';
+                                        return {
+                                          itemId: it.inventory_item_id,
+                                          itemName: it.item_name || 'Item',
+                                          unit: it.unit || 'unit',
+                                          qty: it.quantity.toString(),
+                                          rate: it.rate.toString(),
+                                          taxRate: taxPct,
+                                        };
+                                      })
+                                    );
                                   }}
-                                  title="Edit Bill Details"
+                                  title="Edit Bill & Quantities"
                                 >
                                   <Edit2 className="w-3.5 h-3.5 text-amber-400" />
                                 </Button>
@@ -588,6 +677,24 @@ export const PurchasesManager: React.FC = () => {
         maxWidth="xl"
       >
         <form onSubmit={handleSavePurchase} className="space-y-4">
+          {isDraftRestored && (
+            <div className="flex items-center justify-between p-2.5 bg-amber-950/50 border border-amber-700/60 rounded-xl text-xs text-amber-300">
+              <span className="flex items-center gap-1.5">
+                📝 <strong>Unsaved Draft Restored:</strong> Your previous uncompleted bill was recovered.
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  resetPurchaseForm();
+                  showToast('Draft discarded. Starting fresh purchase bill.', 'info');
+                }}
+                className="text-amber-400 hover:text-white underline text-[11px] font-bold"
+              >
+                Discard & Start Fresh
+              </button>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Select
               label="Supplier Vendor *"
@@ -913,14 +1020,39 @@ export const PurchasesManager: React.FC = () => {
       <Modal
         isOpen={!!editingPurchase}
         onClose={() => setEditingPurchase(null)}
-        title="Edit Purchase Invoice"
-        subtitle={`Invoice #${editingPurchase?.invoice_number}`}
-        maxWidth="md"
+        title="Edit Purchase Invoice & Quantities"
+        subtitle={`Invoice #${editingPurchase?.invoice_number} — Received at ${locations.find(l => l.id === editingPurchase?.receiving_location_id)?.name || 'Store'}`}
+        maxWidth="lg"
       >
         <form
           onSubmit={async e => {
             e.preventDefault();
             if (!editingPurchase || !editInvoiceNum.trim()) return;
+
+            const validEditedItems = editPurchaseLines
+              .filter(l => l.itemId && parseFloat(l.qty) >= 0 && parseFloat(l.rate) >= 0)
+              .map(l => {
+                const q = parseFloat(l.qty) || 0;
+                const r = parseFloat(l.rate) || 0;
+                const t = parseFloat(l.taxRate) || 0;
+                const gross = q * r;
+                const tax = (gross * t) / 100;
+                return {
+                  inventory_item_id: l.itemId,
+                  item_name: l.itemName,
+                  quantity: q,
+                  unit: l.unit,
+                  rate: r,
+                  tax_amount: tax,
+                  total_amount: gross + tax,
+                };
+              });
+
+            if (validEditedItems.length === 0) {
+              showToast('At least one item line must remain in the invoice', 'warning');
+              return;
+            }
+
             try {
               await purchasesRepo.updatePurchase(
                 editingPurchase.id,
@@ -928,10 +1060,11 @@ export const PurchasesManager: React.FC = () => {
                   invoice_number: editInvoiceNum.trim(),
                   invoice_date: editInvoiceDate,
                   notes: editPurchaseNotes.trim() || undefined,
+                  items: validEditedItems,
                 },
                 currentRole
               );
-              showToast(`Updated Purchase Bill #${editInvoiceNum}`, 'success');
+              showToast(`Updated Purchase Bill #${editInvoiceNum}. Stock and supplier dues adjusted!`, 'success');
               setEditingPurchase(null);
               await loadData();
             } catch (err: any) {
@@ -956,13 +1089,122 @@ export const PurchasesManager: React.FC = () => {
             />
           </div>
 
+          {/* Editable Line Items & Quantities */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="block text-xs font-semibold text-slate-300">
+                Punched Line Items & Quantities *
+              </label>
+              <span className="text-[10px] text-amber-400 font-mono">
+                Admin Stock & Rate Override
+              </span>
+            </div>
+
+            <div className="border border-slate-800 rounded-xl overflow-hidden bg-slate-950">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-900 border-b border-slate-800 text-slate-400 font-bold uppercase text-[10px]">
+                  <tr>
+                    <th className="py-2.5 px-3">Item Name</th>
+                    <th className="py-2.5 px-3 text-right w-28">Quantity</th>
+                    <th className="py-2.5 px-3 text-right w-28">Rate (₹)</th>
+                    <th className="py-2.5 px-3 text-right w-20">Tax %</th>
+                    <th className="py-2.5 px-3 text-right">Line Total</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60">
+                  {editPurchaseLines.map((line, idx) => {
+                    const q = parseFloat(line.qty) || 0;
+                    const r = parseFloat(line.rate) || 0;
+                    const t = parseFloat(line.taxRate) || 0;
+                    const lineGross = q * r;
+                    const lineTax = (lineGross * t) / 100;
+                    const lineTotal = lineGross + lineTax;
+
+                    return (
+                      <tr key={idx} className="hover:bg-slate-900/40">
+                        <td className="py-2.5 px-3">
+                          <div className="font-bold text-white">{line.itemName}</div>
+                          <div className="text-[10px] text-slate-500 font-mono">Unit: {line.unit}</div>
+                        </td>
+                        <td className="py-2.5 px-3 text-right">
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={line.qty}
+                            onChange={e => {
+                              const val = e.target.value;
+                              setEditPurchaseLines(prev =>
+                                prev.map((l, i) => (i === idx ? { ...l, qty: val } : l))
+                              );
+                            }}
+                            className="w-full bg-slate-900 border border-slate-700 rounded-lg p-1.5 text-xs text-right font-mono font-bold text-orange-400 focus:outline-none focus:border-orange-500"
+                            required
+                          />
+                        </td>
+                        <td className="py-2.5 px-3 text-right">
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={line.rate}
+                            onChange={e => {
+                              const val = e.target.value;
+                              setEditPurchaseLines(prev =>
+                                prev.map((l, i) => (i === idx ? { ...l, rate: val } : l))
+                              );
+                            }}
+                            className="w-full bg-slate-900 border border-slate-700 rounded-lg p-1.5 text-xs text-right font-mono text-white focus:outline-none focus:border-orange-500"
+                            required
+                          />
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-mono text-slate-400">
+                          {line.taxRate}%
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-mono font-bold text-white">
+                          ₹{lineTotal.toFixed(2)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Total summary comparison */}
+            {editingPurchase && (
+              <div className="flex justify-between items-center p-2.5 bg-slate-900 rounded-xl border border-slate-800 text-xs font-mono">
+                <span className="text-slate-400">
+                  Original Invoice Total: <strong className="text-slate-200">₹{editingPurchase.total_amount.toFixed(2)}</strong>
+                </span>
+                <span className="text-orange-400 font-bold">
+                  New Adjusted Total: ₹
+                  {Math.max(
+                    0,
+                    editPurchaseLines.reduce((acc, l) => {
+                      const q = parseFloat(l.qty) || 0;
+                      const r = parseFloat(l.rate) || 0;
+                      const t = parseFloat(l.taxRate) || 0;
+                      const g = q * r;
+                      return acc + g + (g * t) / 100;
+                    }, 0) - (editingPurchase.discount_amount || 0)
+                  ).toFixed(2)}
+                </span>
+              </div>
+            )}
+          </div>
+
+          <div className="p-3 bg-amber-950/40 border border-amber-800/60 rounded-xl text-xs text-amber-300">
+            ⚠️ <strong>Admin Stock Recalibration:</strong> Modifying item quantities directly adjusts available physical stock in <strong>{locations.find(l => l.id === editingPurchase?.receiving_location_id)?.name}</strong>, logs a movement audit entry, and updates the supplier's balance.
+          </div>
+
           <div>
             <label className="block text-xs font-semibold text-slate-300 mb-1">Invoice Notes</label>
             <textarea
               value={editPurchaseNotes}
               onChange={e => setEditPurchaseNotes(e.target.value)}
-              rows={3}
-              className="w-full bg-slate-900 border border-slate-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-orange-500"
+              rows={2}
+              className="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-orange-500"
             />
           </div>
 
@@ -971,7 +1213,7 @@ export const PurchasesManager: React.FC = () => {
               Cancel
             </Button>
             <Button variant="primary" type="submit">
-              Save Changes
+              Save Changes & Adjust Stock
             </Button>
           </div>
         </form>
