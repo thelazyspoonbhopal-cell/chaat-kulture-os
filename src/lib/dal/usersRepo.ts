@@ -207,6 +207,27 @@ export const usersRepo = {
       }
     }
 
+    // Try synchronizing with local backend server (data/local_db.json)
+    try {
+      const res = await fetch('/api/users');
+      if (res.ok) {
+        const backendUsers: UserProfile[] = await res.json();
+        if (Array.isArray(backendUsers)) {
+          for (const bu of backendUsers) {
+            if (bu && bu.id && !deleted.has(bu.id.toLowerCase())) {
+              const idx = list.findIndex(
+                u => u.id === bu.id || (bu.email && (u.email || '').toLowerCase().trim() === bu.email.toLowerCase().trim())
+              );
+              if (idx === -1) {
+                list.push(bu);
+                await db.user_profiles.put(bu).catch(() => {});
+              }
+            }
+          }
+        }
+      }
+    } catch {}
+
     if (list.length === 0) {
       const activeDefaults = INITIAL_DEFAULT_USERS.filter(u => !deleted.has(u.id.toLowerCase()));
       if (activeDefaults.length > 0) {
@@ -349,11 +370,11 @@ export const usersRepo = {
 
     // Sync to backend if accessible
     try {
-      fetch('/api/users', {
+      await fetch('/api/users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newUser),
-      }).catch(() => {});
+      });
     } catch {}
 
     return newUser;
@@ -440,7 +461,7 @@ export const usersRepo = {
 
     // 5. Notify backend server
     try {
-      fetch(`/api/users/${id}`, { method: 'DELETE' }).catch(() => {});
+      await fetch(`/api/users/${id}`, { method: 'DELETE' });
     } catch {}
   },
 
