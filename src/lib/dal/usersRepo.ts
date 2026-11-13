@@ -9,122 +9,14 @@ const INITIAL_DEFAULT_USERS: UserProfile[] = [
     email: 'admin@chaatkulture.com',
     phone: '9826000001',
     role: 'owner',
+    plain_password: 'Admin@ChaatKulture2026',
     password_salt: 'ck_salt_admin_01',
     password_hash: '090c6b58ae017ee3d9b6caf4c8bf7bd113d6786f49a79bb84aa0b7f4e300e3d2', // Admin@ChaatKulture2026
+    pin_hash: '1234',
     assigned_location_ids: ['loc_base_01', 'loc_stor_02', 'loc_shah_03', 'loc_11no_04'],
     assigned_location_id: 'loc_base_01',
     is_active: true,
     notes: 'Sole Super Admin with root authority over Chaat Kulture OS.',
-    created_at: new Date('2026-01-01').toISOString(),
-  },
-  {
-    id: 'usr_aakash_manager',
-    business_id: 'biz_chaatkulture_01',
-    full_name: 'Aakash Tiwari',
-    email: 'aakashtiwari@chaatkulture.com',
-    phone: '9826000000',
-    role: 'manager',
-    password_salt: 'ck_salt_aakash_01',
-    password_hash: '2224a026a9892f2f85fbad5dcefc29e653d1900b461c5f5dda9c25ce1dbef7fa', // Aakash@1234
-    assigned_location_ids: ['loc_base_01', 'loc_stor_02', 'loc_shah_03', 'loc_11no_04'],
-    assigned_location_id: 'loc_base_01',
-    pin_hash: '1234',
-    is_active: true,
-    notes: 'Operations Manager overseeing multi-outlet operations.',
-    created_at: new Date('2026-01-01').toISOString(),
-  },
-  {
-    id: 'usr_saurabh',
-    business_id: 'biz_chaatkulture_01',
-    full_name: 'Saurabh',
-    email: 'saurabh@chaatkulture.com',
-    phone: '9826000007',
-    role: 'outlet_staff',
-    password_salt: 'ck_salt_saurabh_01',
-    password_hash: 'c69c96935266d43097afbefef1c038570ed07de2d168ccf6e7cb62ec1983c9e0', // Staff@2026 or Saurabh@1234
-    assigned_location_ids: ['loc_shah_03'],
-    assigned_location_id: 'loc_shah_03',
-    pin_hash: '2026',
-    is_active: true,
-    notes: 'Frontline staff member assigned to Shahpura outlet.',
-    created_at: new Date('2026-01-01').toISOString(),
-  },
-  {
-    id: 'usr_manager',
-    business_id: 'biz_chaatkulture_01',
-    full_name: 'Vikram Patel',
-    email: 'manager@chaatkulture.com',
-    phone: '9826000002',
-    role: 'manager',
-    password_salt: 'ck_salt_mgr_01',
-    password_hash: 'add6f798e47bd28599f3d239337be037f9b6cc5fe35f1acbab610bb16647c3c2', // Manager@2026
-    assigned_location_ids: ['loc_base_01', 'loc_stor_02', 'loc_shah_03', 'loc_11no_04'],
-    assigned_location_id: 'loc_base_01',
-    is_active: true,
-    notes: 'Operations Manager overseeing production batches, challans, and outlet coordination.',
-    created_at: new Date('2026-01-01').toISOString(),
-  },
-  {
-    id: 'usr_kitchen',
-    business_id: 'biz_chaatkulture_01',
-    full_name: 'Chef Ram Kumar',
-    email: 'kitchen@chaatkulture.com',
-    phone: '9826000003',
-    role: 'kitchen_manager',
-    password_salt: 'ck_salt_ktn_01',
-    password_hash: '61e0f3b7dc4d804b465e97e9318f6ff185a711de94a1170dd9189800a78ded5d', // Kitchen@2026
-    assigned_location_ids: ['loc_base_01'],
-    assigned_location_id: 'loc_base_01',
-    is_active: true,
-    notes: 'Head Chef at Central Kitchen. Restricted to Base Kitchen prep and dispatch operations.',
-    created_at: new Date('2026-01-01').toISOString(),
-  },
-  {
-    id: 'usr_staff_shahpura',
-    business_id: 'biz_chaatkulture_01',
-    full_name: 'Deepak Singh',
-    email: 'shahpura@chaatkulture.com',
-    phone: '9826000004',
-    role: 'outlet_staff',
-    password_salt: 'ck_salt_stf_01',
-    password_hash: 'd94585c931292a94b8308551969ccf381fdc33f45a245e87d31e3737affbfdb9', // Staff@2026
-    assigned_location_ids: ['loc_shah_03'],
-    assigned_location_id: 'loc_shah_03',
-    pin_hash: '2026',
-    is_active: true,
-    notes: 'Frontline Counter Staff assigned strictly to Shahpura Street Outlet.',
-    created_at: new Date('2026-01-01').toISOString(),
-  },
-  {
-    id: 'usr_staff_11no',
-    business_id: 'biz_chaatkulture_01',
-    full_name: 'Rahul Sen',
-    email: 'outlet11no@chaatkulture.com',
-    phone: '9826000005',
-    role: 'outlet_staff',
-    password_salt: 'ck_salt_stf_01',
-    password_hash: 'd94585c931292a94b8308551969ccf381fdc33f45a245e87d31e3737affbfdb9', // Staff@2026
-    assigned_location_ids: ['loc_11no_04'],
-    assigned_location_id: 'loc_11no_04',
-    pin_hash: '1104',
-    is_active: true,
-    notes: 'Counter Cashier assigned strictly to Tukisssz Kasa, 11 No. Food Court Outlet.',
-    created_at: new Date('2026-01-01').toISOString(),
-  },
-  {
-    id: 'usr_staff_multi',
-    business_id: 'biz_chaatkulture_01',
-    full_name: 'Rohan Verma',
-    email: 'rohan@chaatkulture.com',
-    phone: '9826000006',
-    role: 'outlet_staff',
-    password_salt: 'ck_salt_stf_01',
-    password_hash: 'd94585c931292a94b8308551969ccf381fdc33f45a245e87d31e3737affbfdb9', // Staff@2026
-    assigned_location_ids: ['loc_shah_03', 'loc_11no_04'],
-    assigned_location_id: 'loc_shah_03',
-    pin_hash: '3344',
-    is_active: true,
-    notes: 'Roving staff member assigned to multiple retail outlets (Shahpura & 11 No. Food Court).',
     created_at: new Date('2026-01-01').toISOString(),
   },
 ];
@@ -160,11 +52,12 @@ function getDeletedUserIdentifiers(): Set<string> {
   }
 }
 
-function recordDeletedUser(id: string): void {
+function recordDeletedUser(id: string, email?: string): void {
   if (typeof window === 'undefined' || !window.localStorage) return;
   try {
     const set = getDeletedUserIdentifiers();
     if (id) set.add(id.toLowerCase().trim());
+    if (email) set.add(email.toLowerCase().trim());
     window.localStorage.setItem(STORAGE_KEY_DELETED_USERS, JSON.stringify(Array.from(set)));
   } catch {}
 }
@@ -434,10 +327,18 @@ export const usersRepo = {
     const email = existing?.email;
 
     // 1. Record in tombstone tracker so it never comes back on refresh
-    recordDeletedUser(id);
+    recordDeletedUser(id, email);
 
     // 2. Remove from Dexie DB
     await db.user_profiles.delete(id);
+    if (email) {
+      const allWithEmail = await db.user_profiles.where('email').equalsIgnoreCase(email).toArray().catch(() => []);
+      for (const u of allWithEmail) {
+        if (u.id !== 'usr_owner') {
+          await db.user_profiles.delete(u.id).catch(() => {});
+        }
+      }
+    }
 
     // 3. Remove from localStorage custom users registry
     const stored = getStoredCustomUsers().filter(

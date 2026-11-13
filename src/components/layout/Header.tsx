@@ -133,17 +133,24 @@ export const Header: React.FC = () => {
           <span className="hidden md:inline">{isOnline ? 'PWA Ready' : 'IndexedDB Mode'}</span>
         </div>
 
-        {/* Active User Avatar & Role */}
+        {/* Active User Avatar, Name, Role & Login ID */}
         <div className="flex items-center gap-2 pl-2 border-l border-slate-800">
-          <div className="w-7 h-7 rounded-lg bg-slate-800 text-slate-300 flex items-center justify-center text-xs font-bold">
-            <User className="w-4 h-4 text-orange-400" />
+          <div className="w-8 h-8 rounded-xl bg-orange-600/20 border border-orange-500/40 text-orange-400 flex items-center justify-center text-xs font-black shrink-0 shadow-inner">
+            {currentUser?.full_name
+              ? currentUser.full_name.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase()
+              : 'CK'}
           </div>
-          <div className="hidden lg:block text-left">
-            <span className="text-xs font-bold text-slate-200 block leading-tight">
-              {currentUser?.full_name || roleLabels[currentRole]}
-            </span>
-            <span className="text-[10px] text-slate-400 font-mono">
-              {roleLabels[currentRole]}
+          <div className="text-left">
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs font-bold text-slate-100 block leading-tight max-w-[130px] sm:max-w-[200px] truncate">
+                {currentUser?.full_name || roleLabels[currentRole]}
+              </span>
+              <span className="text-[9px] px-1.5 py-0.2 rounded font-mono font-semibold bg-slate-800 text-orange-300 border border-slate-700 hidden sm:inline-block">
+                {roleLabels[currentRole]}
+              </span>
+            </div>
+            <span className="text-[10px] text-slate-400 font-mono block leading-tight truncate max-w-[140px] sm:max-w-[220px]">
+              {currentUser?.email || currentUser?.phone || currentUser?.id || 'staff'}
             </span>
           </div>
         </div>

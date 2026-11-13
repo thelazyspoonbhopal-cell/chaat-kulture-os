@@ -1,7 +1,7 @@
 {
   "version": "2.4.0",
   "created_at": "2026-11-12T08:42:16.540Z",
-  "last_updated_at": "2026-11-12T13:11:51.288Z",
+  "last_updated_at": "2026-11-13T11:22:15.095Z",
   "business": {
     "id": "biz_chaat_kulture_001",
     "name": "Chaat Kulture",
@@ -274,114 +274,47 @@
   "audit_logs": [],
   "user_profiles": [
     {
-      "id": "usr_kitchen",
-      "business_id": "biz_chaatkulture_01",
-      "full_name": "Chef Ram Kumar (Kitchen Manager)",
-      "email": "kitchen@chaatkulture.com",
-      "phone": "9826000003",
-      "role": "kitchen_manager",
-      "assigned_location_id": "loc_base_01",
-      "is_active": true,
-      "created_at": "2026-11-12T10:15:43.906Z",
-      "assigned_location_ids": [
-        "loc_base_01"
-      ],
-      "password_hash": "61e0f3b7dc4d804b465e97e9318f6ff185a711de94a1170dd9189800a78ded5d",
-      "password_salt": "ck_salt_ktn_01",
-      "updated_at": "2026-11-12T13:11:51.286Z"
-    },
-    {
-      "id": "usr_manager",
-      "business_id": "biz_chaatkulture_01",
-      "full_name": "Vikram Patel (Manager)",
-      "email": "manager@chaatkulture.com",
-      "phone": "9826000002",
-      "role": "manager",
-      "is_active": true,
-      "created_at": "2026-11-12T10:15:43.906Z",
-      "assigned_location_ids": [
-        "loc_base_01",
-        "loc_stor_02",
-        "loc_shah_03",
-        "loc_11no_04"
-      ],
-      "password_salt": "0734e7093594308610d363fa544506f7",
-      "password_hash": "9d5604a9186b88c4d92f3e661b2e00381801fa5a7474cb65e669ea662653a1b3",
-      "assigned_location_id": "loc_base_01",
-      "updated_at": "2026-11-12T13:11:51.286Z"
-    },
-    {
       "id": "usr_owner",
       "business_id": "biz_chaatkulture_01",
-      "full_name": "Aditya Sharma (Owner)",
+      "full_name": "Aditya Sharma (Super Admin)",
       "email": "admin@chaatkulture.com",
       "phone": "9826000001",
       "role": "owner",
-      "is_active": true,
-      "created_at": "2026-11-12T10:15:43.906Z",
+      "plain_password": "Admin@ChaatKulture2026",
+      "password_salt": "ck_salt_admin_01",
+      "password_hash": "090c6b58ae017ee3d9b6caf4c8bf7bd113d6786f49a79bb84aa0b7f4e300e3d2",
+      "pin_hash": "1234",
       "assigned_location_ids": [
         "loc_base_01",
         "loc_stor_02",
         "loc_shah_03",
         "loc_11no_04"
       ],
-      "password_hash": "090c6b58ae017ee3d9b6caf4c8bf7bd113d6786f49a79bb84aa0b7f4e300e3d2",
-      "password_salt": "ck_salt_admin_01",
-      "updated_at": "2026-11-12T13:11:51.286Z"
-    },
-    {
-      "id": "usr_staff_11no",
-      "business_id": "biz_chaatkulture_01",
-      "full_name": "Rahul Sen (Outlet Staff)",
-      "phone": "9826000005",
-      "role": "outlet_staff",
-      "assigned_location_id": "loc_11no_04",
-      "pin_hash": "1104",
+      "assigned_location_id": "loc_base_01",
       "is_active": true,
-      "created_at": "2026-11-12T10:15:43.906Z",
-      "assigned_location_ids": [
-        "loc_11no_04"
-      ],
-      "password_hash": "d94585c931292a94b8308551969ccf381fdc33f45a245e87d31e3737affbfdb9",
-      "password_salt": "ck_salt_stf_01",
-      "updated_at": "2026-11-12T13:11:51.286Z"
-    },
-    {
-      "id": "usr_staff_multi",
-      "business_id": "biz_chaatkulture_01",
-      "full_name": "Rohan Verma",
-      "email": "rohan@chaatkulture.com",
-      "phone": "9826000006",
-      "role": "outlet_staff",
-      "password_salt": "ck_salt_stf_01",
-      "password_hash": "d94585c931292a94b8308551969ccf381fdc33f45a245e87d31e3737affbfdb9",
-      "assigned_location_ids": [
-        "loc_shah_03",
-        "loc_11no_04"
-      ],
-      "assigned_location_id": "loc_shah_03",
-      "pin_hash": "3344",
-      "is_active": true,
-      "notes": "Roving staff member assigned to multiple retail outlets (Shahpura & 11 No. Food Court).",
+      "notes": "Sole Super Admin with root authority over Chaat Kulture OS.",
       "created_at": "2026-01-01T00:00:00.000Z",
-      "updated_at": "2026-11-12T13:11:51.286Z"
+      "updated_at": "2026-11-13T11:18:21.889Z"
     },
     {
-      "id": "usr_staff_shahpura",
+      "id": "usr_saurabh",
       "business_id": "biz_chaatkulture_01",
-      "full_name": "Deepak Singh (Outlet Staff)",
-      "phone": "9826000004",
+      "full_name": "Saurabh",
+      "email": "saurabh@chaatkulture.com",
+      "phone": "9826000007",
       "role": "outlet_staff",
-      "assigned_location_id": "loc_shah_03",
+      "plain_password": "Staff@2026",
+      "password_salt": "ck_salt_saurabh_01",
+      "password_hash": "c69c96935266d43097afbefef1c038570ed07de2d168ccf6e7cb62ec1983c9e0",
       "pin_hash": "2026",
-      "is_active": true,
-      "created_at": "2026-11-12T10:15:43.906Z",
       "assigned_location_ids": [
         "loc_shah_03"
       ],
-      "password_hash": "d94585c931292a94b8308551969ccf381fdc33f45a245e87d31e3737affbfdb9",
-      "password_salt": "ck_salt_stf_01",
-      "updated_at": "2026-11-12T13:11:51.286Z"
+      "assigned_location_id": "loc_shah_03",
+      "is_active": true,
+      "notes": "Frontline staff member assigned to Shahpura outlet.",
+      "created_at": "2026-01-01T00:00:00.000Z",
+      "updated_at": "2026-11-13T11:18:21.889Z"
     }
   ],
   "user_sessions": [

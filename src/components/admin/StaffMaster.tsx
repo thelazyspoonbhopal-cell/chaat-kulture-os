@@ -252,8 +252,11 @@ export const StaffMaster: React.FC = () => {
   const handleDeleteStaff = async () => {
     if (!deletingUser) return;
     try {
-      await usersRepo.delete(deletingUser.id);
-      showToast(`Staff member "${deletingUser.full_name}" deleted cleanly`, 'success');
+      const deletedId = deletingUser.id;
+      const deletedName = deletingUser.full_name;
+      setUsersList(prev => prev.filter(u => u.id !== deletedId));
+      await usersRepo.delete(deletedId);
+      showToast(`Staff member "${deletedName}" permanently deleted`, 'success');
       setDeletingUser(null);
       await loadUsers();
       await refreshData();

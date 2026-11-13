@@ -223,62 +223,38 @@ export async function initializeDatabaseDefaults() {
     { id: 'ff_6', business_id: businessId, feature_key: 'business_intelligence', name: 'Business Intelligence & Multi-Outlet Analytics', description: 'Outlet comparison metrics, hourly sales patterns and profit forecasting', is_enabled: true },
   ]);
 
-  // 5. Initial User Role Personas (For local testing)
-  await db.user_profiles.bulkPut([
-    {
+  // 5. Initial Root Super Admin (Strictly Sole Super Admin, No Dummy Personas)
+  const existingOwner = await db.user_profiles.get('usr_owner');
+  if (!existingOwner) {
+    await db.user_profiles.put({
       id: 'usr_owner',
       business_id: businessId,
-      full_name: 'Aditya Sharma (Owner)',
-      email: 'owner@chaatkulture.com',
+      full_name: 'Aditya Sharma (Super Admin)',
+      email: 'admin@chaatkulture.com',
       phone: '9826000001',
       role: 'owner',
-      is_active: true,
-      created_at: now,
-    },
-    {
-      id: 'usr_manager',
-      business_id: businessId,
-      full_name: 'Vikram Patel (Manager)',
-      email: 'manager@chaatkulture.com',
-      phone: '9826000002',
-      role: 'manager',
-      is_active: true,
-      created_at: now,
-    },
-    {
-      id: 'usr_kitchen',
-      business_id: businessId,
-      full_name: 'Chef Ram Kumar (Kitchen Manager)',
-      email: 'kitchen@chaatkulture.com',
-      phone: '9826000003',
-      role: 'kitchen_manager',
+      password_salt: 'ck_salt_admin_01',
+      password_hash: '090c6b58ae017ee3d9b6caf4c8bf7bd113d6786f49a79bb84aa0b7f4e300e3d2', // Admin@ChaatKulture2026
+      plain_password: 'Admin@ChaatKulture2026',
+      pin_hash: '1234',
+      assigned_location_ids: ['loc_base_01', 'loc_stor_02', 'loc_shah_03', 'loc_11no_04'],
       assigned_location_id: 'loc_base_01',
       is_active: true,
+      notes: 'Sole Super Admin with root authority over Chaat Kulture OS.',
       created_at: now,
-    },
-    {
-      id: 'usr_staff_shahpura',
-      business_id: businessId,
-      full_name: 'Deepak Singh (Outlet Staff)',
-      phone: '9826000004',
-      role: 'outlet_staff',
-      assigned_location_id: 'loc_shah_03',
-      pin_hash: '2026', // Simulated hash
-      is_active: true,
-      created_at: now,
-    },
-    {
-      id: 'usr_staff_11no',
-      business_id: businessId,
-      full_name: 'Rahul Sen (Outlet Staff)',
-      phone: '9826000005',
-      role: 'outlet_staff',
-      assigned_location_id: 'loc_11no_04',
-      pin_hash: '1104', // Simulated hash
-      is_active: true,
-      created_at: now,
-    },
-  ]);
+    });
+  } else {
+    // Keep Super Admin email and role aligned
+    if (existingOwner.email !== 'admin@chaatkulture.com' || existingOwner.role !== 'owner' || !existingOwner.plain_password) {
+      existingOwner.email = 'admin@chaatkulture.com';
+      existingOwner.role = 'owner';
+      existingOwner.plain_password = 'Admin@ChaatKulture2026';
+      existingOwner.password_hash = '090c6b58ae017ee3d9b6caf4c8bf7bd113d6786f49a79bb84aa0b7f4e300e3d2';
+      existingOwner.password_salt = 'ck_salt_admin_01';
+      existingOwner.pin_hash = '1234';
+      await db.user_profiles.put(existingOwner);
+    }
+  }
 
   // 6. Default Expense Categories
   await db.expense_categories.bulkPut([

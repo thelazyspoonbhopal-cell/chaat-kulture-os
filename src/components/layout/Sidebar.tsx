@@ -12,6 +12,8 @@ import {
   Settings,
   ShieldCheck,
   Lock,
+  User,
+  LogOut,
 } from 'lucide-react';
 import type { AppPermissionKey } from '../../types';
 
@@ -24,7 +26,7 @@ interface NavItem {
 }
 
 export const Sidebar: React.FC = () => {
-  const { currentRole, activeTab, setActiveTab, canAccess } = useApp();
+  const { currentRole, activeTab, setActiveTab, canAccess, currentUser, logout } = useApp();
 
   const navItems: NavItem[] = [
     {
@@ -152,8 +154,35 @@ export const Sidebar: React.FC = () => {
         })}
       </div>
 
-      {/* RBAC Status in Sidebar Footer */}
+      {/* Logged In Staff Profile Card & RBAC Footer */}
       <div className="p-3 border-t border-slate-800/80 space-y-2">
+        {currentUser && (
+          <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between text-xs">
+            <div className="flex items-center gap-2 min-w-0 pr-1">
+              <div className="w-8 h-8 rounded-lg bg-orange-600/20 border border-orange-500/30 text-orange-400 flex items-center justify-center font-bold text-xs shrink-0">
+                {currentUser.full_name
+                  ? currentUser.full_name.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase()
+                  : 'CK'}
+              </div>
+              <div className="min-w-0">
+                <span className="font-bold text-white block leading-tight truncate text-xs">
+                  {currentUser.full_name}
+                </span>
+                <span className="text-[10px] text-slate-400 font-mono block leading-tight truncate">
+                  {currentUser.email || currentUser.phone || currentUser.id}
+                </span>
+              </div>
+            </div>
+            <button
+              onClick={logout}
+              className="p-1 text-slate-400 hover:text-rose-400 rounded-lg hover:bg-slate-800 transition-colors shrink-0"
+              title="Sign Out"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
         <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between text-xs">
           <div className="space-y-0.5">
             <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">Access Scope</span>
