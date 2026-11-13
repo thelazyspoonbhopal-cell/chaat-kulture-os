@@ -130,6 +130,7 @@ const INITIAL_DEFAULT_USERS: UserProfile[] = [
 ];
 
 const STORAGE_KEY_CUSTOM_USERS = 'ck_custom_users_registry';
+const STORAGE_KEY_DELETED_USERS = 'ck_deleted_user_identifiers';
 
 function getStoredCustomUsers(): UserProfile[] {
   if (typeof window === 'undefined' || !window.localStorage) return [];
@@ -148,13 +149,58 @@ function saveStoredCustomUsers(users: UserProfile[]): void {
   } catch {}
 }
 
+function getDeletedUserIdentifiers(): Set<string> {
+  if (typeof window === 'undefined' || !window.localStorage) return new Set();
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY_DELETED_USERS);
+    const arr = raw ? JSON.parse(raw) : [];
+    return new Set(arr.map((x: string) => (x || '').toLowerCase().trim()));
+  } catch {
+    return new Set();
+  }
+}
+
+function recordDeletedUser(id: string, email?: string): void {
+  if (typeof window === 'undefined' || !window.localStorage) return;
+  try {
+    const set = getDeletedUserIdentifiers();
+    if (id) set.add(id.toLowerCase().trim());
+    if (email) set.add(email.toLowerCase().trim());
+    window.localStorage.setItem(STORAGE_KEY_DELETED_USERS, JSON.stringify(Array.from(set)));
+  } catch {}
+}
+
+function unrecordDeletedUser(id: string, email?: string): void {
+  if (typeof window === 'undefined' || !window.localStorage) return;
+  try {
+    const set = getDeletedUserIdentifiers();
+    if (id) set.delete(id.toLowerCase().trim());
+    if (email) set.delete(email.toLowerCase().trim());
+    window.localStorage.setItem(STORAGE_KEY_DELETED_USERS, JSON.stringify(Array.from(set)));
+  } catch {}
+}
+
 export const usersRepo = {
   async getAll(): Promise<UserProfile[]> {
+    const deleted = getDeletedUserIdentifiers();
     let list = await db.user_profiles.toArray();
     const stored = getStoredCustomUsers();
 
-    // Merge persistent localStorage users into Dexie list if missing
+    // Clean up any lingering deleted users in Dexie
+    for (const u of list) {
+      if (deleted.has(u.id.toLowerCase()) || (u.email && deleted.has(u.email.trim().toLowerCase()))) {
+        await db.user_profiles.delete(u.id).catch(() => {});
+      }
+    }
+    list = list.filter(
+      u => !deleted.has(u.id.toLowerCase()) && (!u.email || !deleted.has(u.email.trim().toLowerCase()))
+    );
+
+    // Merge persistent localStorage users into Dexie list if missing and not deleted
     for (const s of stored) {
+      if (deleted.has(s.id.toLowerCase()) || (s.email && deleted.has(s.email.trim().toLowerCase()))) {
+        continue;
+      }
       const exists = list.some(
         u => u.id === s.id || (s.email && (u.email || '').trim().toLowerCase() === s.email.trim().toLowerCase())
       );
@@ -165,15 +211,24 @@ export const usersRepo = {
     }
 
     if (list.length === 0) {
-      await db.user_profiles.bulkPut(INITIAL_DEFAULT_USERS);
-      saveStoredCustomUsers(INITIAL_DEFAULT_USERS);
-      return INITIAL_DEFAULT_USERS;
+      const activeDefaults = INITIAL_DEFAULT_USERS.filter(
+        u => !deleted.has(u.id.toLowerCase()) && (!u.email || !deleted.has(u.email.trim().toLowerCase()))
+      );
+      if (activeDefaults.length > 0) {
+        await db.user_profiles.bulkPut(activeDefaults);
+        saveStoredCustomUsers(activeDefaults);
+        return activeDefaults;
+      }
     }
 
     let needsUpdate = false;
 
-    // Ensure all default users exist and have updated emails/passwords
+    // Ensure non-deleted default users exist and have updated emails/passwords
     for (const defUser of INITIAL_DEFAULT_USERS) {
+      if (deleted.has(defUser.id.toLowerCase()) || (defUser.email && deleted.has(defUser.email.trim().toLowerCase()))) {
+        continue; // User was explicitly deleted! Do not re-insert!
+      }
+
       const idx = list.findIndex(u => u.id === defUser.id);
       if (idx === -1) {
         list.push(defUser);
@@ -233,7 +288,7 @@ export const usersRepo = {
       await db.user_profiles.bulkPut(sanitized);
     }
 
-    // Keep localStorage in sync
+    // Keep localStorage in sync with non-deleted active users
     saveStoredCustomUsers(sanitized);
 
     return sanitized;
@@ -285,6 +340,10 @@ export const usersRepo = {
       assigned_location_id: locIds[0] || 'loc_shah_03',
       created_at: now,
     };
+
+    // If previously deleted, unrecord tombstone
+    unrecordDeletedUser(newUser.id, newUser.email);
+    unrecordDeletedUser(newUser.id, rawEmail);
 
     await db.user_profiles.put(newUser);
 
@@ -357,7 +416,37 @@ export const usersRepo = {
     if (id === 'usr_owner') {
       throw new Error('Cannot delete primary Owner/Super Admin account.');
     }
+
+    let existing = await db.user_profiles.get(id);
+    if (!existing) {
+      const stored = getStoredCustomUsers();
+      existing = stored.find(s => s.id === id);
+    }
+    const email = existing?.email;
+
+    // 1. Record in tombstone tracker so it never comes back on refresh
+    recordDeletedUser(id, email);
+
+    // 2. Remove from Dexie DB
     await db.user_profiles.delete(id);
+
+    // 3. Remove from localStorage custom users registry
+    const stored = getStoredCustomUsers().filter(
+      u => u.id !== id && (!email || (u.email || '').trim().toLowerCase() !== email.trim().toLowerCase())
+    );
+    saveStoredCustomUsers(stored);
+
+    // 4. Terminate any active sessions for this user
+    await db.user_sessions
+      .where('user_id')
+      .equals(id)
+      .modify({ is_active: false, revoked_at: new Date().toISOString(), revocation_reason: 'admin_revoked' })
+      .catch(() => {});
+
+    // 5. Notify backend server
+    try {
+      fetch(`/api/users/${id}`, { method: 'DELETE' }).catch(() => {});
+    } catch {}
   },
 
   async assignLocations(userId: string, locationIds: string[]): Promise<UserProfile> {

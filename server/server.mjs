@@ -314,6 +314,13 @@ const server = http.createServer(async (req, res) => {
         }
       }
     }
+    if (pathname.startsWith('/api/users/')) {
+      const id = pathname.replace('/api/users/', '');
+      if (method === 'DELETE') {
+        const removed = localDb.remove('user_profiles', id);
+        return jsonResponse(res, 200, { success: removed });
+      }
+    }
 
     // 404 for unknown endpoints
     return jsonResponse(res, 404, { error: 'Endpoint not found', path: pathname });
