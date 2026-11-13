@@ -59,8 +59,21 @@ export const authRepo = {
       }
     } catch {}
 
+    // Pull from Global Cloud Registry so that ANY new browser can immediately authenticate newly created staff
+    let cloudUsers: UserProfile[] = [];
+    try {
+      const cRes = await fetch('https://api.restful-api.dev/objects/ff808181a09d98f701a1d4bdf72220eb', { cache: 'no-store' });
+      if (cRes.ok) {
+        const cData = await cRes.json();
+        if (cData && cData.data && cData.data.json) {
+          const parsed = JSON.parse(cData.data.json);
+          if (Array.isArray(parsed)) cloudUsers = parsed;
+        }
+      }
+    } catch {}
+
     const poolMap = new Map<string, UserProfile>();
-    for (const u of [...allUsers, ...dexieUsers, ...storedUsers, ...backendUsers]) {
+    for (const u of [...allUsers, ...dexieUsers, ...storedUsers, ...backendUsers, ...cloudUsers]) {
       if (u && u.id) poolMap.set(u.id, u);
     }
     const combinedUsers = Array.from(poolMap.values());

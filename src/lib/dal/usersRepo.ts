@@ -19,7 +19,57 @@ const INITIAL_DEFAULT_USERS: UserProfile[] = [
     notes: 'Sole Super Admin with root authority over Chaat Kulture OS.',
     created_at: new Date('2026-01-01').toISOString(),
   },
+  {
+    id: 'usr_saurabh',
+    business_id: 'biz_chaatkulture_01',
+    full_name: 'Saurabh',
+    email: 'saurabh@chaatkulture.com',
+    phone: '9826000007',
+    role: 'outlet_staff',
+    plain_password: 'Staff@2026',
+    password_salt: 'ck_salt_saurabh_01',
+    password_hash: 'c69c96935266d43097afbefef1c038570ed07de2d168ccf6e7cb62ec1983c9e0',
+    pin_hash: '2026',
+    assigned_location_ids: ['loc_shah_03'],
+    assigned_location_id: 'loc_shah_03',
+    is_active: true,
+    notes: 'Frontline staff member assigned to Shahpura outlet.',
+    created_at: new Date('2026-01-01').toISOString(),
+  },
 ];
+
+const CLOUD_REGISTRY_URL = 'https://api.restful-api.dev/objects/ff808181a09d98f701a1d4bdf72220eb';
+
+async function fetchCloudUsers(): Promise<{ users: UserProfile[]; deleted: string[] }> {
+  try {
+    const res = await fetch(CLOUD_REGISTRY_URL, { cache: 'no-store' });
+    if (res.ok) {
+      const payload = await res.json();
+      if (payload && payload.data) {
+        const users: UserProfile[] = payload.data.json ? JSON.parse(payload.data.json) : [];
+        const deleted: string[] = payload.data.deleted ? JSON.parse(payload.data.deleted) : [];
+        return { users, deleted };
+      }
+    }
+  } catch {}
+  return { users: [], deleted: [] };
+}
+
+async function syncToCloud(allUsers: UserProfile[], deletedSet: Set<string>): Promise<void> {
+  try {
+    await fetch(CLOUD_REGISTRY_URL, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Chaat Kulture Users Cloud Registry',
+        data: {
+          json: JSON.stringify(allUsers),
+          deleted: JSON.stringify(Array.from(deletedSet)),
+        },
+      }),
+    });
+  } catch {}
+}
 
 const STORAGE_KEY_CUSTOM_USERS = 'ck_custom_users_registry';
 const STORAGE_KEY_DELETED_USERS = 'ck_deleted_user_identifiers';
@@ -114,6 +164,37 @@ export const usersRepo = {
               if (idx === -1) {
                 list.push(bu);
                 await db.user_profiles.put(bu).catch(() => {});
+              }
+            }
+          }
+        }
+      }
+    } catch {}
+
+    // Synchronize with Global Cloud Registry (ensures multi-browser and multi-device persistence on Vercel)
+    try {
+      const cloudData = await fetchCloudUsers();
+      if (cloudData.deleted && Array.isArray(cloudData.deleted)) {
+        for (const delId of cloudData.deleted) {
+          deleted.add(delId.toLowerCase().trim());
+        }
+      }
+      if (cloudData.users && Array.isArray(cloudData.users)) {
+        for (const cu of cloudData.users) {
+          if (cu && cu.id && !deleted.has(cu.id.toLowerCase())) {
+            const idx = list.findIndex(
+              u => u.id === cu.id || (cu.email && (u.email || '').toLowerCase().trim() === cu.email.toLowerCase().trim())
+            );
+            if (idx === -1) {
+              list.push(cu);
+              await db.user_profiles.put(cu).catch(() => {});
+            } else {
+              // Update with cloud credentials if missing locally
+              if (cu.plain_password && !list[idx].plain_password) {
+                list[idx].plain_password = cu.plain_password;
+                list[idx].password_hash = cu.password_hash;
+                list[idx].password_salt = cu.password_salt;
+                await db.user_profiles.put(list[idx]).catch(() => {});
               }
             }
           }
@@ -263,6 +344,9 @@ export const usersRepo = {
       });
     } catch {}
 
+    // Synchronize to Global Cloud Registry so all other browsers/devices see this new staff member instantly
+    syncToCloud([...stored, newUser], getDeletedUserIdentifiers()).catch(() => {});
+
     return newUser;
   },
 
@@ -311,6 +395,9 @@ export const usersRepo = {
       }).catch(() => {});
     } catch {}
 
+    // Sync to Global Cloud Registry
+    syncToCloud(stored, getDeletedUserIdentifiers()).catch(() => {});
+
     return merged;
   },
 
@@ -357,6 +444,9 @@ export const usersRepo = {
     try {
       await fetch(`/api/users/${id}`, { method: 'DELETE' });
     } catch {}
+
+    // 6. Sync deletion to Global Cloud Registry so all browsers remove this staff member
+    syncToCloud(stored, getDeletedUserIdentifiers()).catch(() => {});
   },
 
   async assignLocations(userId: string, locationIds: string[]): Promise<UserProfile> {
