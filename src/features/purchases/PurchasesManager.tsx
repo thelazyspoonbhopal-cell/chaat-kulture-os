@@ -25,8 +25,10 @@ import {
   Trash2,
   Printer,
   Lock,
+  FileSpreadsheet,
 } from 'lucide-react';
 import type { Purchase, PurchaseItem, Supplier, InventoryItem, Location } from '../../types';
+import { PurchaseExcelUploaderModal } from './PurchaseExcelUploaderModal';
 
 export const PurchasesManager: React.FC = () => {
   const { locations, currentLocation, accessibleLocations, currentRole, showToast } = useApp();
@@ -84,6 +86,9 @@ export const PurchasesManager: React.FC = () => {
   const [payDate, setPayDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [payRef, setPayRef] = useState<string>('');
   const [payNotes, setPayNotes] = useState<string>('');
+
+  // Excel Bulk Upload Modal
+  const [isExcelModalOpen, setIsExcelModalOpen] = useState<boolean>(false);
 
   const openRecordPurchaseModal = () => {
     try {
@@ -319,7 +324,17 @@ export const PurchasesManager: React.FC = () => {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => setIsExcelModalOpen(true)}
+            className="border-emerald-700/60 hover:bg-emerald-950/40 text-emerald-300"
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Upload by Excel</span>
+          </Button>
+
           <Button variant="secondary" size="sm" onClick={() => {
             if (suppliers.length > 0) setPaySupId(suppliers[0].id);
             setIsPayModalOpen(true);
@@ -387,9 +402,11 @@ export const PurchasesManager: React.FC = () => {
             <EmptyState
               icon={<Receipt className="w-8 h-8" />}
               title="No Purchase Invoices Found"
-              description="Click '+ Record Purchase Invoice' to enter vendor purchase bills. Stock will automatically be added to your Central Store Room or receiving outlet."
+              description="Click '+ Record Purchase Invoice' to enter vendor purchase bills, or 'Upload by Excel' to inward multiple invoices at once."
               actionLabel="+ Record Purchase Bill"
               onAction={openRecordPurchaseModal}
+              secondaryActionLabel="Upload by Excel"
+              onSecondaryAction={() => setIsExcelModalOpen(true)}
             />
           ) : (
             <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
@@ -1299,6 +1316,18 @@ export const PurchasesManager: React.FC = () => {
           </div>
         </form>
       </Modal>
+
+      {/* 5. Upload Purchases by Excel Modal */}
+      <PurchaseExcelUploaderModal
+        isOpen={isExcelModalOpen}
+        onClose={() => setIsExcelModalOpen(false)}
+        suppliers={suppliers}
+        locations={locations}
+        inventoryItems={inventoryItems}
+        purchases={purchases}
+        onSuccess={loadData}
+        showToast={showToast}
+      />
     </div>
   );
 };
