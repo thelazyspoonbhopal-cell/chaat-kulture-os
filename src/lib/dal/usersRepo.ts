@@ -3,25 +3,9 @@ import type { UserProfile, UserRole, Location } from '../../types';
 
 const INITIAL_DEFAULT_USERS: UserProfile[] = [
   {
-    id: 'usr_aakash_admin',
-    business_id: 'biz_chaatkulture_01',
-    full_name: 'Aakash Tiwari',
-    email: 'aakashtiwari@chaatkulture.com',
-    phone: '9826000000',
-    role: 'owner',
-    password_salt: 'ck_salt_aakash_01',
-    password_hash: '',
-    assigned_location_ids: ['loc_base_01', 'loc_stor_02', 'loc_shah_03', 'loc_11no_04'],
-    assigned_location_id: 'loc_base_01',
-    pin_hash: '1234',
-    is_active: true,
-    notes: 'Super Admin with root authority over Chaat Kulture OS.',
-    created_at: new Date('2026-01-01').toISOString(),
-  },
-  {
     id: 'usr_owner',
     business_id: 'biz_chaatkulture_01',
-    full_name: 'Aditya Sharma',
+    full_name: 'Aditya Sharma (Super Admin)',
     email: 'admin@chaatkulture.com',
     phone: '9826000001',
     role: 'owner',
@@ -30,7 +14,23 @@ const INITIAL_DEFAULT_USERS: UserProfile[] = [
     assigned_location_ids: ['loc_base_01', 'loc_stor_02', 'loc_shah_03', 'loc_11no_04'],
     assigned_location_id: 'loc_base_01',
     is_active: true,
-    notes: 'Super Admin with unrestricted global access to all physical units and financial records.',
+    notes: 'Sole Super Admin with root authority over Chaat Kulture OS.',
+    created_at: new Date('2026-01-01').toISOString(),
+  },
+  {
+    id: 'usr_aakash_manager',
+    business_id: 'biz_chaatkulture_01',
+    full_name: 'Aakash Tiwari',
+    email: 'aakashtiwari@chaatkulture.com',
+    phone: '9826000000',
+    role: 'manager',
+    password_salt: 'ck_salt_aakash_01',
+    password_hash: '',
+    assigned_location_ids: ['loc_base_01', 'loc_stor_02', 'loc_shah_03', 'loc_11no_04'],
+    assigned_location_id: 'loc_base_01',
+    pin_hash: '1234',
+    is_active: true,
+    notes: 'Operations Manager overseeing multi-outlet operations.',
     created_at: new Date('2026-01-01').toISOString(),
   },
   {
@@ -132,10 +132,23 @@ export const usersRepo = {
       } else {
         const existing = list[idx];
         let changed = false;
-        // Fix owner email if it was previously owner@ or aditya@
-        if (existing.id === 'usr_owner' && existing.email !== 'admin@chaatkulture.com') {
-          existing.email = 'admin@chaatkulture.com';
-          changed = true;
+        // Fix owner email & role to ensure only 1 Super Admin
+        if (existing.id === 'usr_owner') {
+          if (existing.email !== 'admin@chaatkulture.com') {
+            existing.email = 'admin@chaatkulture.com';
+            changed = true;
+          }
+          if (existing.role !== 'owner') {
+            existing.role = 'owner';
+            changed = true;
+          }
+        }
+        // Ensure Aakash Tiwari is strictly Manager
+        if (existing.email === 'aakashtiwari@chaatkulture.com' || existing.id === 'usr_aakash_admin' || existing.id === 'usr_aakash_manager') {
+          if (existing.role !== 'manager') {
+            existing.role = 'manager';
+            changed = true;
+          }
         }
         // Ensure password hash & salt exist
         if (!existing.password_hash || !existing.password_salt) {

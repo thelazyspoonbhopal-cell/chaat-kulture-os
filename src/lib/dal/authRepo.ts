@@ -51,31 +51,33 @@ export const authRepo = {
     });
 
     if (!user) {
-      if (
-        cleanEmail === 'aakashtiwari@chaatkulture.com' ||
-        cleanEmail.startsWith('aakash') ||
-        cleanEmail === 'admin@chaatkulture.com' ||
-        cleanEmail === 'owner@chaatkulture.com'
-      ) {
-        user = allUsers.find(u => (u.email || '').toLowerCase() === cleanEmail) || allUsers.find(u => u.role === 'owner');
+      if (cleanEmail === 'admin@chaatkulture.com' || cleanEmail === 'owner@chaatkulture.com') {
+        user = allUsers.find(u => u.id === 'usr_owner' || u.role === 'owner');
         if (user) {
-          user.email = cleanEmail;
+          user.email = 'admin@chaatkulture.com';
+          user.role = 'owner';
           await db.user_profiles.put(user);
-        } else {
+        }
+      } else if (cleanEmail === 'aakashtiwari@chaatkulture.com' || cleanEmail.startsWith('aakash')) {
+        user = allUsers.find(u => (u.email || '').toLowerCase() === cleanEmail);
+        if (!user) {
           user = {
-            id: 'usr_aakash_admin',
+            id: 'usr_aakash_manager',
             business_id: 'biz_chaatkulture_01',
             full_name: 'Aakash Tiwari',
             email: cleanEmail,
             phone: '9826000000',
-            role: 'owner',
+            role: 'manager',
             assigned_location_ids: ['loc_base_01', 'loc_stor_02', 'loc_shah_03', 'loc_11no_04'],
             assigned_location_id: 'loc_base_01',
             pin_hash: '1234',
             is_active: true,
-            notes: 'Super Admin Owner',
+            notes: 'Operations Manager',
             created_at: now,
           };
+          await db.user_profiles.put(user);
+        } else {
+          user.role = 'manager';
           await db.user_profiles.put(user);
         }
       }
