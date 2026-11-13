@@ -712,11 +712,18 @@ export const TransfersManager: React.FC = () => {
         <form onSubmit={handleSaveIndent} className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Select
-              label="Requesting Outlet *"
+              label="Requesting Location *"
               value={indentFromLoc}
-              onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setIndentFromLoc(e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
+                const nextFrom = e.target.value;
+                setIndentFromLoc(nextFrom);
+                if (indentToLoc === nextFrom) {
+                  const fallback = locations.find(l => l.id !== nextFrom);
+                  if (fallback) setIndentToLoc(fallback.id);
+                }
+              }}
               options={(isScoped ? accessibleLocations : locations)
-                .filter(l => l.type === 'outlet')
+                .filter(l => l.id !== indentToLoc)
                 .map(l => ({ value: l.id, label: `${l.name} (${l.code})` }))}
             />
 
@@ -724,10 +731,17 @@ export const TransfersManager: React.FC = () => {
               label="Fulfilling Location *"
               value={indentToLoc}
               onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setIndentToLoc(e.target.value)}
-              options={[
-                ...locations.filter(l => l.type === 'base_kitchen').map(l => ({ value: l.id, label: `🍳 ${l.name} (Cooked Food)` })),
-                ...locations.filter(l => l.type === 'store_room').map(l => ({ value: l.id, label: `📦 ${l.name} (Packaging/Raw)` })),
-              ]}
+              options={locations
+                .filter(l => l.id !== indentFromLoc)
+                .map(l => ({
+                  value: l.id,
+                  label:
+                    l.type === 'base_kitchen'
+                      ? `🍳 ${l.name} (Cooked Food / Kitchen)`
+                      : l.type === 'store_room'
+                      ? `📦 ${l.name} (Central Store / Raw Materials)`
+                      : `${l.name} (${l.code})`,
+                }))}
             />
           </div>
 
@@ -833,15 +847,22 @@ export const TransfersManager: React.FC = () => {
             <Select
               label="Source Location *"
               value={dispatchSourceLoc}
-              onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setDispatchSourceLoc(e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
+                const nextSrc = e.target.value;
+                setDispatchSourceLoc(nextSrc);
+                if (dispatchDestLoc === nextSrc) {
+                  const fallback = locations.find(l => l.id !== nextSrc);
+                  if (fallback) setDispatchDestLoc(fallback.id);
+                }
+              }}
               options={locations.filter(l => l.type === 'base_kitchen' || l.type === 'store_room').map(l => ({ value: l.id, label: `${l.name} (${l.code})` }))}
             />
 
             <Select
-              label="Destination Outlet *"
+              label="Destination Location *"
               value={dispatchDestLoc}
               onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setDispatchDestLoc(e.target.value)}
-              options={locations.filter(l => l.type === 'outlet').map(l => ({ value: l.id, label: `${l.name} (${l.code})` }))}
+              options={locations.filter(l => l.id !== dispatchSourceLoc).map(l => ({ value: l.id, label: `${l.name} (${l.code})` }))}
             />
           </div>
 
