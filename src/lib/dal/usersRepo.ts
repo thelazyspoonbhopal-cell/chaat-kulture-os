@@ -50,32 +50,16 @@ function getSyncToken(): string {
 }
 
 export async function fetchCloudUsers(): Promise<{ users: UserProfile[]; deleted: string[] }> {
-  // Strategy 1: Fetch via GitHub Gist Raw CDN (fast, unmetered, universally accessible)
-  try {
-    const rawRes = await fetch(`${GIST_RAW_URL}?_t=${Date.now()}`, {
-      cache: 'no-store',
-      headers: { 'Accept': 'application/json' },
-    });
-    if (rawRes.ok) {
-      const payload = await rawRes.json();
-      if (payload && Array.isArray(payload.users)) {
-        return {
-          users: payload.users,
-          deleted: Array.isArray(payload.deleted) ? payload.deleted : [],
-        };
-      }
-    }
-  } catch (err) {
-    console.warn('Gist raw fetch fallback triggered:', err);
-  }
+  const token = getSyncToken();
 
-  // Strategy 2: Fetch via GitHub Gist API
+  // Strategy 1: Fetch via GitHub Gist API (instant real-time consistency, 0 cache delay)
   try {
     const apiRes = await fetch(GIST_API_URL, {
       cache: 'no-store',
       headers: {
         'Accept': 'application/vnd.github.v3+json',
         'User-Agent': 'ChaatKultureOS',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
       },
     });
     if (apiRes.ok) {
@@ -93,6 +77,25 @@ export async function fetchCloudUsers(): Promise<{ users: UserProfile[]; deleted
     }
   } catch (err) {
     console.warn('Gist API fetch fallback triggered:', err);
+  }
+
+  // Strategy 2: Fetch via GitHub Gist Raw CDN (fast, unmetered, universally accessible)
+  try {
+    const rawRes = await fetch(`${GIST_RAW_URL}?_t=${Date.now()}`, {
+      cache: 'no-store',
+      headers: { 'Accept': 'application/json' },
+    });
+    if (rawRes.ok) {
+      const payload = await rawRes.json();
+      if (payload && Array.isArray(payload.users)) {
+        return {
+          users: payload.users,
+          deleted: Array.isArray(payload.deleted) ? payload.deleted : [],
+        };
+      }
+    }
+  } catch (err) {
+    console.warn('Gist raw fetch fallback triggered:', err);
   }
 
   // Strategy 3: Fetch via local backend /api/users
