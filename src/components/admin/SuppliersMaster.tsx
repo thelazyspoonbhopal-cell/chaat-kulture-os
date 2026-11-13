@@ -223,8 +223,10 @@ export const SuppliersMaster: React.FC = () => {
                     <td className="py-3 px-4 text-right font-mono font-bold">
                       {sup.current_outstanding > 0 ? (
                         <span className="text-amber-400">₹{sup.current_outstanding.toFixed(2)}</span>
+                      ) : sup.current_outstanding < 0 ? (
+                        <span className="text-emerald-400">₹{Math.abs(sup.current_outstanding).toFixed(2)} (Adv)</span>
                       ) : (
-                        <span className="text-emerald-400">₹0.00</span>
+                        <span className="text-slate-400">₹0.00</span>
                       )}
                     </td>
                     <td className="py-3 px-4 text-center">

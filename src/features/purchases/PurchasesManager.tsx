@@ -48,6 +48,8 @@ export const PurchasesManager: React.FC = () => {
   const [editPurchaseNotes, setEditPurchaseNotes] = useState<string>('');
   const [voidingPurchase, setVoidingPurchase] = useState<Purchase | null>(null);
   const [voidPurchaseReason, setVoidPurchaseReason] = useState<string>('');
+  const [voidingPayment, setVoidingPayment] = useState<any | null>(null);
+  const [voidPaymentReason, setVoidPaymentReason] = useState<string>('');
 
   // Selected supplier for Ledger view
   const [selectedSupplierId, setSelectedSupplierId] = useState<string>('');
@@ -200,6 +202,25 @@ export const PurchasesManager: React.FC = () => {
     } catch (err) {
       console.error(err);
       showToast('Error recording supplier payment', 'error');
+    }
+  };
+
+  // Handle Void / Delete Supplier Payment
+  const handleVoidPayment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!voidingPayment?.id || !voidPaymentReason.trim()) {
+      showToast('Please state a reason for voiding this payment', 'warning');
+      return;
+    }
+    try {
+      await purchasesRepo.deleteSupplierPayment(voidingPayment.id, voidPaymentReason.trim(), currentRole);
+      showToast(`Voided payment of ₹${voidingPayment.credit.toFixed(2)}. Supplier balance recalculated.`, 'success');
+      setVoidingPayment(null);
+      setVoidPaymentReason('');
+      await loadData();
+    } catch (err: any) {
+      console.error(err);
+      showToast(err.message || 'Error voiding supplier payment', 'error');
     }
   };
 
@@ -437,7 +458,16 @@ export const PurchasesManager: React.FC = () => {
               <Select
                 value={selectedSupplierId}
                 onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSelectedSupplierId(e.target.value)}
-                options={suppliers.map(s => ({ value: s.id, label: `${s.name} (Due: ₹${s.current_outstanding})` }))}
+                options={suppliers.map(s => ({
+                  value: s.id,
+                  label: `${s.name} ${
+                    s.current_outstanding > 0
+                      ? `(Due: ₹${s.current_outstanding.toFixed(2)})`
+                      : s.current_outstanding < 0
+                      ? `(Advance: ₹${Math.abs(s.current_outstanding).toFixed(2)})`
+                      : '(Settled)'
+                  }`,
+                }))}
               />
             </div>
 
@@ -450,9 +480,27 @@ export const PurchasesManager: React.FC = () => {
                   </span>
                 </div>
                 <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-800">
-                  <span className="text-[10px] text-slate-400 block">Current Outstanding Dues</span>
-                  <span className="font-mono font-bold text-amber-400 text-sm">
-                    ₹{supplierLedgerData.currentOutstanding.toFixed(2)}
+                  <span className="text-[10px] text-slate-400 block">
+                    {supplierLedgerData.currentOutstanding > 0
+                      ? 'Current Outstanding Dues'
+                      : supplierLedgerData.currentOutstanding < 0
+                      ? 'Advance Balance with Vendor'
+                      : 'Settlement Status'}
+                  </span>
+                  <span
+                    className={`font-mono font-bold text-sm ${
+                      supplierLedgerData.currentOutstanding > 0
+                        ? 'text-amber-400'
+                        : supplierLedgerData.currentOutstanding < 0
+                        ? 'text-emerald-400'
+                        : 'text-slate-300'
+                    }`}
+                  >
+                    {supplierLedgerData.currentOutstanding > 0
+                      ? `₹${supplierLedgerData.currentOutstanding.toFixed(2)}`
+                      : supplierLedgerData.currentOutstanding < 0
+                      ? `₹${Math.abs(supplierLedgerData.currentOutstanding).toFixed(2)} (Advance)`
+                      : 'All Settled (₹0.00)'}
                   </span>
                 </div>
               </div>
@@ -472,6 +520,7 @@ export const PurchasesManager: React.FC = () => {
                       <th className="py-3 px-4 text-right">Debit (Purchases +)</th>
                       <th className="py-3 px-4 text-right">Credit (Payments -)</th>
                       <th className="py-3 px-4 text-right">Running Outstanding</th>
+                      <th className="py-3 px-4 text-center">Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800">
@@ -490,8 +539,29 @@ export const PurchasesManager: React.FC = () => {
                         <td className="py-3 px-4 text-right font-mono font-bold text-emerald-400">
                           {entry.credit > 0 ? `-₹${entry.credit.toFixed(2)}` : '—'}
                         </td>
-                        <td className="py-3 px-4 text-right font-mono font-bold text-white text-sm bg-slate-950/40">
-                          ₹{entry.runningBalance.toFixed(2)}
+                        <td className="py-3 px-4 text-right font-mono font-bold text-sm bg-slate-950/40">
+                          {entry.runningBalance > 0 ? (
+                            <span className="text-amber-400">₹{entry.runningBalance.toFixed(2)}</span>
+                          ) : entry.runningBalance < 0 ? (
+                            <span className="text-emerald-400">₹{Math.abs(entry.runningBalance).toFixed(2)} Adv</span>
+                          ) : (
+                            <span className="text-slate-400">₹0.00</span>
+                          )}
+                        </td>
+                        <td className="py-3 px-4 text-center">
+                          {entry.type === 'payment' && entry.id ? (
+                            <Button
+                              variant="danger"
+                              size="sm"
+                              className="!p-1.5"
+                              title="Void / Delete Payment"
+                              onClick={() => setVoidingPayment(entry)}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </Button>
+                          ) : (
+                            <span className="text-slate-600 text-xs">—</span>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -674,7 +744,16 @@ export const PurchasesManager: React.FC = () => {
             label="Supplier *"
             value={paySupId}
             onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setPaySupId(e.target.value)}
-            options={suppliers.map(s => ({ value: s.id, label: `${s.name} (Due: ₹${s.current_outstanding})` }))}
+            options={suppliers.map(s => ({
+              value: s.id,
+              label: `${s.name} ${
+                s.current_outstanding > 0
+                  ? `(Due: ₹${s.current_outstanding.toFixed(2)})`
+                  : s.current_outstanding < 0
+                  ? `(Advance: ₹${Math.abs(s.current_outstanding).toFixed(2)})`
+                  : '(Settled)'
+              }`,
+            }))}
           />
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -942,6 +1021,38 @@ export const PurchasesManager: React.FC = () => {
             </Button>
             <Button variant="danger" type="submit">
               Confirm Stock Reversal & Void
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* 4. Void Supplier Payment Modal */}
+      <Modal
+        isOpen={!!voidingPayment}
+        onClose={() => setVoidingPayment(null)}
+        title="Void Supplier Payment"
+        subtitle={`Payment of ₹${voidingPayment?.credit ? Number(voidingPayment.credit).toFixed(2) : '0.00'}`}
+        maxWidth="md"
+      >
+        <form onSubmit={handleVoidPayment} className="space-y-4">
+          <div className="p-3 bg-rose-950/40 border border-rose-800/60 rounded-xl text-xs text-rose-300">
+            ⚠️ <strong>Payment Reversal:</strong> Deleting this payment entry will deduct ₹{voidingPayment?.credit ? Number(voidingPayment.credit).toFixed(2) : '0.00'} from the credit statement, reverse any linked invoice settlements, and restore the supplier's balance.
+          </div>
+
+          <Input
+            label="Mandatory Reason for Voiding Payment *"
+            placeholder="e.g. Duplicate payment punched / Wrong amount"
+            value={voidPaymentReason}
+            onChange={e => setVoidPaymentReason(e.target.value)}
+            required
+          />
+
+          <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
+            <Button variant="secondary" type="button" onClick={() => setVoidingPayment(null)}>
+              Cancel
+            </Button>
+            <Button variant="danger" type="submit">
+              Confirm Payment Reversal & Void
             </Button>
           </div>
         </form>

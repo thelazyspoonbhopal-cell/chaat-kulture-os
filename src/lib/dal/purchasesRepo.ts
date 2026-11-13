@@ -206,10 +206,10 @@ export const purchasesRepo = {
       // 1. Record payment
       await db.supplier_payments.put(payment);
 
-      // 2. Reduce supplier outstanding balance
+      // 2. Reduce supplier balance without artificial clamping at 0 (enables Advance balance)
       const supplier = await db.suppliers.get(data.supplier_id);
       if (supplier) {
-        const newOutstanding = Math.max(0, (supplier.current_outstanding || 0) - data.amount);
+        const newOutstanding = (supplier.current_outstanding || 0) - data.amount;
         await db.suppliers.update(data.supplier_id, {
           current_outstanding: newOutstanding,
         });
@@ -246,6 +246,79 @@ export const purchasesRepo = {
     return payment;
   },
 
+  async recalculateSupplierBalance(supplierId: string): Promise<number> {
+    const supplier = await db.suppliers.get(supplierId);
+    if (!supplier) return 0;
+
+    const [purchases, payments] = await Promise.all([
+      db.purchases.where('supplier_id').equals(supplierId).toArray(),
+      db.supplier_payments.where('supplier_id').equals(supplierId).toArray(),
+    ]);
+
+    const totalPurchases = purchases.reduce((sum, p) => sum + (p.total_amount || 0), 0);
+    const totalPayments = payments.reduce((sum, pay) => sum + (pay.amount || 0), 0);
+    const netBalance = (supplier.opening_balance || 0) + totalPurchases - totalPayments;
+
+    await db.suppliers.update(supplierId, {
+      current_outstanding: netBalance,
+    });
+
+    return netBalance;
+  },
+
+  async deleteSupplierPayment(paymentId: string, reason: string, deletedBy: string = 'admin'): Promise<void> {
+    const payment = await db.supplier_payments.get(paymentId);
+    if (!payment) throw new Error('Supplier payment record not found');
+
+    const now = new Date().toISOString();
+
+    await db.transaction('rw', [db.supplier_payments, db.suppliers, db.purchases, db.audit_logs], async () => {
+      // 1. If tied to a specific purchase invoice, restore its balance
+      if (payment.purchase_id) {
+        const purchase = await db.purchases.get(payment.purchase_id);
+        if (purchase) {
+          const newPaid = Math.max(0, (purchase.paid_amount || 0) - payment.amount);
+          const newBalance = Math.max(0, purchase.total_amount - newPaid);
+          const newStatus = newBalance === 0 ? 'paid' : newPaid === 0 ? 'unpaid' : 'partially_paid';
+
+          await db.purchases.update(payment.purchase_id, {
+            paid_amount: newPaid,
+            outstanding_balance: newBalance,
+            payment_status: newStatus,
+          });
+        }
+      }
+
+      // 2. Delete payment from supplier_payments
+      await db.supplier_payments.delete(paymentId);
+
+      // 3. Recalculate supplier balance
+      const [remainingPurchases, remainingPayments] = await Promise.all([
+        db.purchases.where('supplier_id').equals(payment.supplier_id).toArray(),
+        db.supplier_payments.where('supplier_id').equals(payment.supplier_id).toArray(),
+      ]);
+      const totalPurchases = remainingPurchases.reduce((sum, p) => sum + (p.total_amount || 0), 0);
+      const totalPayments = remainingPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+      const supplier = await db.suppliers.get(payment.supplier_id);
+      const netBalance = (supplier?.opening_balance || 0) + totalPurchases - totalPayments;
+
+      await db.suppliers.update(payment.supplier_id, {
+        current_outstanding: netBalance,
+      });
+
+      // 4. Audit Log
+      await db.audit_logs.put({
+        id: 'audit_' + Date.now(),
+        business_id: payment.business_id,
+        action: 'DELETE_SUPPLIER_PAYMENT',
+        entity: 'supplier_payments',
+        entity_id: paymentId,
+        new_data: { supplier_id: payment.supplier_id, amount: payment.amount, reason, deletedBy },
+        created_at: now,
+      });
+    });
+  },
+
   async getSupplierLedger(supplierId: string) {
     const [supplier, purchases, payments] = await Promise.all([
       db.suppliers.get(supplierId),
@@ -257,6 +330,7 @@ export const purchasesRepo = {
 
     // Combine into chronological ledger
     interface LedgerEntry {
+      id?: string;
       date: string;
       type: 'purchase' | 'payment';
       ref: string;
@@ -266,10 +340,11 @@ export const purchasesRepo = {
       runningBalance: number;
     }
 
-    const entries: { date: string; type: 'purchase' | 'payment'; ref: string; desc: string; debit: number; credit: number }[] = [];
+    const entries: { id?: string; date: string; type: 'purchase' | 'payment'; ref: string; desc: string; debit: number; credit: number }[] = [];
 
     purchases.forEach(p => {
       entries.push({
+        id: p.id,
         date: p.invoice_date,
         type: 'purchase',
         ref: p.invoice_number,
@@ -281,6 +356,7 @@ export const purchasesRepo = {
 
     payments.forEach(pay => {
       entries.push({
+        id: pay.id,
         date: pay.payment_date,
         type: 'payment',
         ref: pay.reference_id || 'PAY',
@@ -296,6 +372,7 @@ export const purchasesRepo = {
     const fullLedger: LedgerEntry[] = entries.map(e => {
       running += e.debit - e.credit;
       return {
+        id: e.id,
         date: e.date,
         type: e.type,
         ref: e.ref,
@@ -306,10 +383,18 @@ export const purchasesRepo = {
       };
     });
 
+    // Auto-heal current_outstanding in database if it previously clamped to 0
+    if (supplier.current_outstanding !== running) {
+      await db.suppliers.update(supplierId, {
+        current_outstanding: running,
+      });
+      supplier.current_outstanding = running;
+    }
+
     return {
       supplier,
       openingBalance: supplier.opening_balance || 0,
-      currentOutstanding: supplier.current_outstanding || 0,
+      currentOutstanding: running,
       ledger: fullLedger,
     };
   },
@@ -401,25 +486,28 @@ export const purchasesRepo = {
           });
         }
 
-        // 2. Reduce supplier outstanding balance by the unpaid amount
-        if (purchase.outstanding_balance > 0) {
-          const supplier = await db.suppliers.get(purchase.supplier_id);
-          if (supplier) {
-            const newOutstanding = Math.max(0, (supplier.current_outstanding || 0) - purchase.outstanding_balance);
-            await db.suppliers.update(purchase.supplier_id, {
-              current_outstanding: newOutstanding,
-            });
-          }
-        }
-
-        // 3. Delete payments linked directly to this purchase (safe across all schema versions)
+        // 2. Delete payments linked directly to this purchase (safe across all schema versions)
         const linkedPayments = await db.supplier_payments.filter(p => p.purchase_id === id).toArray();
         for (const p of linkedPayments) {
           await db.supplier_payments.delete(p.id);
         }
 
-        // 4. Delete purchase invoice
+        // 3. Delete purchase invoice
         await db.purchases.delete(id);
+
+        // 4. Recalculate supplier balance accurately
+        const [remainingPurchases, remainingPayments] = await Promise.all([
+          db.purchases.where('supplier_id').equals(purchase.supplier_id).toArray(),
+          db.supplier_payments.where('supplier_id').equals(purchase.supplier_id).toArray(),
+        ]);
+        const totalPurchases = remainingPurchases.reduce((sum, p) => sum + (p.total_amount || 0), 0);
+        const totalPayments = remainingPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+        const supplier = await db.suppliers.get(purchase.supplier_id);
+        const netBalance = (supplier?.opening_balance || 0) + totalPurchases - totalPayments;
+
+        await db.suppliers.update(purchase.supplier_id, {
+          current_outstanding: netBalance,
+        });
 
         // 5. Audit
         await db.audit_logs.put({
