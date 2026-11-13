@@ -25,12 +25,31 @@ export const authSecurity = {
    * Hashes a password with salt using native WebCrypto SHA-256
    */
   async hashPassword(password: string, salt: string): Promise<string> {
-    const encoder = new TextEncoder();
-    const data = encoder.encode(password + '::ck_salt::' + salt);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-    return Array.from(new Uint8Array(hashBuffer))
-      .map(b => b.toString(16).padStart(2, '0'))
-      .join('');
+    const raw = password + '::ck_salt::' + salt;
+    try {
+      if (typeof window !== 'undefined' && window.crypto && window.crypto.subtle) {
+        const encoder = new TextEncoder();
+        const data = encoder.encode(raw);
+        const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+        return Array.from(new Uint8Array(hashBuffer))
+          .map(b => b.toString(16).padStart(2, '0'))
+          .join('');
+      }
+    } catch {
+      // Fallback if subtle crypto is unavailable or blocked in non-secure context
+    }
+
+    // Deterministic fallback hash for non-secure context (HTTP / IP)
+    let h1 = 0xdeadbeef;
+    let h2 = 0x41c64e6d;
+    for (let i = 0; i < raw.length; i++) {
+      const ch = raw.charCodeAt(i);
+      h1 = Math.imul(h1 ^ ch, 2654435761);
+      h2 = Math.imul(h2 ^ ch, 1597334677);
+    }
+    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+    return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(16);
   },
 
   /**

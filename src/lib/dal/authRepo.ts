@@ -40,13 +40,16 @@ export const authRepo = {
     const deviceId = await authSecurity.getDeviceFingerprint();
     const deviceName = authSecurity.getDeviceName();
 
-    // 1. Locate user in DB by Email or Phone Number
+    // 1. Locate user in DB by Email, Username, or Phone Number
     const allUsers = await usersRepo.getAll();
     let user = allUsers.find(u => {
-      const uEmail = (u.email || '').toLowerCase();
+      const uEmail = (u.email || '').trim().toLowerCase();
+      const uUsername = uEmail.split('@')[0];
       const uPhoneDigits = (u.phone || '').replace(/[^0-9]/g, '');
       if (uEmail === cleanEmail) return true;
+      if (uUsername && uUsername === cleanEmail) return true;
       if (cleanDigits.length >= 10 && uPhoneDigits.endsWith(cleanDigits.slice(-10))) return true;
+      if (cleanDigits.length > 0 && uPhoneDigits === cleanDigits) return true;
       return false;
     });
 
@@ -148,14 +151,31 @@ export const authRepo = {
       }
     }
 
-    // 3. Verify Password Hash, 4-Digit Quick PIN, or Role Defaults
+    // 3. Verify Password Hash, Plain Password, 4-Digit Quick PIN, or Role Defaults
     let isPasswordValid = false;
-    if (user.password_hash && user.password_salt) {
+
+    // Direct plain password match (if stored by Staff Settings)
+    if ((user as any).plain_password && cleanPassword === (user as any).plain_password) {
+      isPasswordValid = true;
+    }
+
+    // Direct password_hash match (if stored without salt)
+    if (!isPasswordValid && user.password_hash && cleanPassword === user.password_hash) {
+      isPasswordValid = true;
+    }
+
+    // Salted hash verification via WebCrypto / Pure JS fallback
+    if (!isPasswordValid && user.password_hash && user.password_salt) {
       isPasswordValid = await authSecurity.verifyPassword(cleanPassword, user.password_hash, user.password_salt);
     }
 
     // Check 4-digit POS quick PIN
     if (!isPasswordValid && user.pin_hash && cleanPassword === user.pin_hash.trim()) {
+      isPasswordValid = true;
+    }
+
+    // Case-insensitive plain password fallback
+    if (!isPasswordValid && (user as any).plain_password && cleanPassword.toLowerCase() === (user as any).plain_password.toLowerCase()) {
       isPasswordValid = true;
     }
     

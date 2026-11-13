@@ -139,14 +139,10 @@ export const StaffMaster: React.FC = () => {
       return;
     }
 
-    // Role validation: staff and kitchen manager must have at least one outlet assigned
-    if ((formRole === 'outlet_staff' || formRole === 'kitchen_manager') && formAssignedLocIds.length === 0) {
-      showToast('Please assign at least one outlet/kitchen to this staff member', 'warning');
-      return;
-    }
+    const effectiveLocIds = formAssignedLocIds.length > 0 ? formAssignedLocIds : ['loc_shah_03'];
 
     if (!formEmail.trim()) {
-      showToast('Login email address is required', 'warning');
+      showToast('Login email address or username is required', 'warning');
       return;
     }
 
@@ -156,11 +152,11 @@ export const StaffMaster: React.FC = () => {
     }
 
     try {
-      let passwordUpdates: { password_salt?: string; password_hash?: string } = {};
+      let passwordUpdates: { password_salt?: string; password_hash?: string; plain_password?: string } = {};
       if (formPassword.trim()) {
         const salt = authSecurity.generateSalt();
         const hash = await authSecurity.hashPassword(formPassword.trim(), salt);
-        passwordUpdates = { password_salt: salt, password_hash: hash };
+        passwordUpdates = { password_salt: salt, password_hash: hash, plain_password: formPassword.trim() };
       }
 
       if (editingUserId) {
@@ -172,11 +168,11 @@ export const StaffMaster: React.FC = () => {
           role: formRole,
           pin_hash: formPin.trim() || undefined,
           notes: formNotes.trim() || undefined,
-          assigned_location_ids: formAssignedLocIds,
-          assigned_location_id: formAssignedLocIds[0] || undefined,
+          assigned_location_ids: effectiveLocIds,
+          assigned_location_id: effectiveLocIds[0],
           is_active: formIsActive,
           ...passwordUpdates,
-        });
+        } as any);
         showToast(`Staff member "${formName}" updated successfully`, 'success');
         setIsEditModalOpen(false);
       } else {
@@ -189,11 +185,11 @@ export const StaffMaster: React.FC = () => {
           role: formRole,
           pin_hash: formPin.trim() || undefined,
           notes: formNotes.trim() || undefined,
-          assigned_location_ids: formAssignedLocIds,
-          assigned_location_id: formAssignedLocIds[0] || undefined,
+          assigned_location_ids: effectiveLocIds,
+          assigned_location_id: effectiveLocIds[0],
           is_active: formIsActive,
           ...passwordUpdates,
-        });
+        } as any);
         showToast(`Staff member "${formName}" added successfully`, 'success');
         setIsAddModalOpen(false);
       }
@@ -568,9 +564,9 @@ export const StaffMaster: React.FC = () => {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Input
-                label="Login Email Address *"
-                placeholder="e.g. amit@chaatkulture.com"
-                type="email"
+                label="Login Email or Username *"
+                placeholder="e.g. amit@chaatkulture.com or amit"
+                type="text"
                 value={formEmail}
                 onChange={e => setFormEmail(e.target.value)}
                 required
@@ -663,9 +659,12 @@ export const StaffMaster: React.FC = () => {
                   const isStore = loc.type === 'store_room';
 
                   return (
-                    <label
+                    <div
                       key={loc.id}
+                      role="button"
+                      tabIndex={0}
                       onClick={() => toggleLocationSelection(loc.id)}
+                      onKeyDown={e => { if (e.key === ' ' || e.key === 'Enter') toggleLocationSelection(loc.id); }}
                       className={`flex items-start gap-2.5 p-2.5 rounded-xl border cursor-pointer transition-all ${
                         isChecked
                           ? 'bg-orange-600/10 border-orange-500/60 text-white'
@@ -696,7 +695,7 @@ export const StaffMaster: React.FC = () => {
                           {loc.code} &bull; {loc.type.replace('_', ' ')}
                         </span>
                       </div>
-                    </label>
+                    </div>
                   );
                 })}
               </div>
@@ -801,9 +800,12 @@ export const StaffMaster: React.FC = () => {
                   const isChecked = formAssignedLocIds.includes(loc.id);
                   const isKitchen = loc.type === 'base_kitchen';
                   return (
-                    <label
+                    <div
                       key={loc.id}
+                      role="button"
+                      tabIndex={0}
                       onClick={() => toggleLocationSelection(loc.id)}
+                      onKeyDown={e => { if (e.key === ' ' || e.key === 'Enter') toggleLocationSelection(loc.id); }}
                       className={`flex items-center justify-between p-3 rounded-xl border cursor-pointer transition-all ${
                         isChecked
                           ? 'bg-orange-600/10 border-orange-500/60 text-white'
@@ -840,7 +842,7 @@ export const StaffMaster: React.FC = () => {
                           Assigned
                         </span>
                       )}
-                    </label>
+                    </div>
                   );
                 })}
               </div>

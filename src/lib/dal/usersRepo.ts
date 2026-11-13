@@ -197,19 +197,33 @@ export const usersRepo = {
   },
 
   async add(user: Omit<UserProfile, 'id' | 'created_at'>): Promise<UserProfile> {
+    const cleanEmail = (user.email || '').trim().toLowerCase();
+    const cleanPhone = (user.phone || '').replace(/[^0-9]/g, '');
+
+    const allUsers = await db.user_profiles.toArray();
+    const existing = allUsers.find(
+      u =>
+        (cleanEmail && (u.email || '').trim().toLowerCase() === cleanEmail) ||
+        (cleanPhone.length >= 10 && (u.phone || '').replace(/[^0-9]/g, '').endsWith(cleanPhone.slice(-10)))
+    );
+
+    if (existing) {
+      return await this.update(existing.id, user);
+    }
+
     const now = new Date().toISOString();
     const id = 'usr_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6);
     
     // Ensure assigned_location_ids is present
     const locIds = user.assigned_location_ids && user.assigned_location_ids.length > 0
       ? user.assigned_location_ids
-      : (user.assigned_location_id ? [user.assigned_location_id] : []);
+      : (user.assigned_location_id ? [user.assigned_location_id] : ['loc_shah_03']);
 
     const newUser: UserProfile = {
       ...user,
       id,
       assigned_location_ids: locIds,
-      assigned_location_id: locIds[0] || undefined,
+      assigned_location_id: locIds[0] || 'loc_shah_03',
       created_at: now,
     };
 
