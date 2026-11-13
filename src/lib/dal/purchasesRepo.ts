@@ -412,8 +412,8 @@ export const purchasesRepo = {
           }
         }
 
-        // 3. Delete payments linked directly to this purchase
-        const linkedPayments = await db.supplier_payments.where('purchase_id').equals(id).toArray();
+        // 3. Delete payments linked directly to this purchase (safe across all schema versions)
+        const linkedPayments = await db.supplier_payments.filter(p => p.purchase_id === id).toArray();
         for (const p of linkedPayments) {
           await db.supplier_payments.delete(p.id);
         }

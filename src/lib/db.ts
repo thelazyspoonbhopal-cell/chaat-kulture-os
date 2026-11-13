@@ -87,7 +87,7 @@ export class ChaatKultureDexieDB extends Dexie {
       inventory_movements: 'id, client_tx_id, location_id, inventory_item_id, movement_type, created_at, is_demo',
       suppliers: 'id, business_id, is_active, is_demo',
       purchases: 'id, client_tx_id, supplier_id, receiving_location_id, payment_status, created_at, is_demo',
-      supplier_payments: 'id, supplier_id, payment_date, is_demo',
+      supplier_payments: 'id, purchase_id, supplier_id, payment_date, is_demo',
       expense_categories: 'id, business_id, is_active',
       expenses: 'id, client_tx_id, location_id, category_id, payment_status, expense_date, is_demo',
       expense_payments: 'id, expense_id, payment_date, is_demo',
@@ -119,6 +119,10 @@ export class ChaatKultureDexieDB extends Dexie {
 
     this.version(4).stores({
       role_permissions: 'role',
+    });
+
+    this.version(5).stores({
+      supplier_payments: 'id, purchase_id, supplier_id, payment_date, is_demo',
     });
   }
 }
