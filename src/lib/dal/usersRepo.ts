@@ -160,12 +160,11 @@ function getDeletedUserIdentifiers(): Set<string> {
   }
 }
 
-function recordDeletedUser(id: string, email?: string): void {
+function recordDeletedUser(id: string): void {
   if (typeof window === 'undefined' || !window.localStorage) return;
   try {
     const set = getDeletedUserIdentifiers();
     if (id) set.add(id.toLowerCase().trim());
-    if (email) set.add(email.toLowerCase().trim());
     window.localStorage.setItem(STORAGE_KEY_DELETED_USERS, JSON.stringify(Array.from(set)));
   } catch {}
 }
@@ -186,19 +185,17 @@ export const usersRepo = {
     let list = await db.user_profiles.toArray();
     const stored = getStoredCustomUsers();
 
-    // Clean up any lingering deleted users in Dexie
+    // Clean up any lingering deleted users by ID in Dexie
     for (const u of list) {
-      if (deleted.has(u.id.toLowerCase()) || (u.email && deleted.has(u.email.trim().toLowerCase()))) {
+      if (deleted.has(u.id.toLowerCase())) {
         await db.user_profiles.delete(u.id).catch(() => {});
       }
     }
-    list = list.filter(
-      u => !deleted.has(u.id.toLowerCase()) && (!u.email || !deleted.has(u.email.trim().toLowerCase()))
-    );
+    list = list.filter(u => !deleted.has(u.id.toLowerCase()));
 
     // Merge persistent localStorage users into Dexie list if missing and not deleted
     for (const s of stored) {
-      if (deleted.has(s.id.toLowerCase()) || (s.email && deleted.has(s.email.trim().toLowerCase()))) {
+      if (deleted.has(s.id.toLowerCase())) {
         continue;
       }
       const exists = list.some(
@@ -211,9 +208,7 @@ export const usersRepo = {
     }
 
     if (list.length === 0) {
-      const activeDefaults = INITIAL_DEFAULT_USERS.filter(
-        u => !deleted.has(u.id.toLowerCase()) && (!u.email || !deleted.has(u.email.trim().toLowerCase()))
-      );
+      const activeDefaults = INITIAL_DEFAULT_USERS.filter(u => !deleted.has(u.id.toLowerCase()));
       if (activeDefaults.length > 0) {
         await db.user_profiles.bulkPut(activeDefaults);
         saveStoredCustomUsers(activeDefaults);
@@ -225,7 +220,7 @@ export const usersRepo = {
 
     // Ensure non-deleted default users exist and have updated emails/passwords
     for (const defUser of INITIAL_DEFAULT_USERS) {
-      if (deleted.has(defUser.id.toLowerCase()) || (defUser.email && deleted.has(defUser.email.trim().toLowerCase()))) {
+      if (deleted.has(defUser.id.toLowerCase())) {
         continue; // User was explicitly deleted! Do not re-insert!
       }
 
@@ -425,7 +420,7 @@ export const usersRepo = {
     const email = existing?.email;
 
     // 1. Record in tombstone tracker so it never comes back on refresh
-    recordDeletedUser(id, email);
+    recordDeletedUser(id);
 
     // 2. Remove from Dexie DB
     await db.user_profiles.delete(id);

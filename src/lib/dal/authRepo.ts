@@ -42,8 +42,21 @@ export const authRepo = {
 
     // 1. Locate user in DB by Email, Username, or Phone Number
     const allUsers = await usersRepo.getAll();
+    const dexieUsers = await db.user_profiles.toArray();
+    let storedUsers: UserProfile[] = [];
+    try {
+      const raw = localStorage.getItem('ck_custom_users_registry');
+      if (raw) storedUsers = JSON.parse(raw);
+    } catch {}
+
+    const poolMap = new Map<string, UserProfile>();
+    for (const u of [...allUsers, ...dexieUsers, ...storedUsers]) {
+      if (u && u.id) poolMap.set(u.id, u);
+    }
+    const combinedUsers = Array.from(poolMap.values());
+
     const cleanUsername = cleanEmail.split('@')[0];
-    let user = allUsers.find(u => {
+    let user = combinedUsers.find(u => {
       const uEmail = (u.email || '').trim().toLowerCase();
       const uUsername = uEmail.split('@')[0];
       const uPhoneDigits = (u.phone || '').replace(/[^0-9]/g, '');
@@ -58,7 +71,7 @@ export const authRepo = {
       if (cleanDigits.length >= 10 && uPhoneDigits.endsWith(cleanDigits.slice(-10))) return true;
       if (cleanDigits.length > 0 && uPhoneDigits === cleanDigits) return true;
       // 5. Name match (e.g. 'saurabh' matching 'Saurabh')
-      if (u.full_name && u.full_name.trim().toLowerCase() === cleanUsername) return true;
+      if (u.full_name && (u.full_name.trim().toLowerCase() === cleanUsername || u.full_name.trim().toLowerCase() === cleanEmail)) return true;
       return false;
     });
 
@@ -185,13 +198,14 @@ export const authRepo = {
     // 3. Verify Password Hash, Plain Password, 4-Digit Quick PIN, or Role Defaults
     let isPasswordValid = false;
 
-    // Direct plain password match (if stored by Staff Settings)
-    if ((user as any).plain_password && cleanPassword === (user as any).plain_password) {
+    // Direct plain password match (exact and case-insensitive)
+    const storedPlain = ((user as any).plain_password || '').trim();
+    if (storedPlain && (cleanPassword === storedPlain || cleanPassword.toLowerCase() === storedPlain.toLowerCase())) {
       isPasswordValid = true;
     }
 
     // Direct password_hash match (if stored without salt)
-    if (!isPasswordValid && user.password_hash && cleanPassword === user.password_hash) {
+    if (!isPasswordValid && user.password_hash && (cleanPassword === user.password_hash || cleanPassword.toLowerCase() === user.password_hash.toLowerCase())) {
       isPasswordValid = true;
     }
 
@@ -201,12 +215,7 @@ export const authRepo = {
     }
 
     // Check 4-digit POS quick PIN
-    if (!isPasswordValid && user.pin_hash && cleanPassword === user.pin_hash.trim()) {
-      isPasswordValid = true;
-    }
-
-    // Case-insensitive plain password fallback
-    if (!isPasswordValid && (user as any).plain_password && cleanPassword.toLowerCase() === (user as any).plain_password.toLowerCase()) {
+    if (!isPasswordValid && user.pin_hash && (cleanPassword === user.pin_hash.trim() || cleanDigits === user.pin_hash.trim())) {
       isPasswordValid = true;
     }
     
