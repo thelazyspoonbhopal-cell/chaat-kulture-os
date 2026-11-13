@@ -32,14 +32,23 @@ export const authRepo = {
    */
   async login(params: LoginParams): Promise<LoginResult> {
     const { email, password, location, locationDenied } = params;
-    const cleanEmail = email.trim().toLowerCase();
+    const cleanInput = email.trim();
+    const cleanEmail = cleanInput.toLowerCase();
+    const cleanDigits = cleanInput.replace(/[^0-9]/g, '');
+    const cleanPassword = password.trim();
     const now = new Date().toISOString();
     const deviceId = await authSecurity.getDeviceFingerprint();
     const deviceName = authSecurity.getDeviceName();
 
-    // 1. Locate user in DB
+    // 1. Locate user in DB by Email or Phone Number
     const allUsers = await usersRepo.getAll();
-    let user = allUsers.find(u => (u.email || '').toLowerCase() === cleanEmail);
+    let user = allUsers.find(u => {
+      const uEmail = (u.email || '').toLowerCase();
+      const uPhoneDigits = (u.phone || '').replace(/[^0-9]/g, '');
+      if (uEmail === cleanEmail) return true;
+      if (cleanDigits.length >= 10 && uPhoneDigits.endsWith(cleanDigits.slice(-10))) return true;
+      return false;
+    });
 
     if (!user) {
       if (cleanEmail === 'admin@chaatkulture.com' || cleanEmail === 'owner@chaatkulture.com') {
@@ -62,12 +71,12 @@ export const authRepo = {
         longitude: location?.longitude,
         location_accuracy: location?.accuracy,
         location_address: location?.address,
-        notes: 'Unknown email address attempted login',
+        notes: 'Unknown email or phone number attempted login',
       });
 
       return {
         success: false,
-        error: 'Invalid email address or password.',
+        error: 'Invalid email, phone number, or password.',
         code: 'INVALID_CREDENTIALS',
       };
     }
@@ -80,46 +89,64 @@ export const authRepo = {
       };
     }
 
-    // 2. Mandatory Location Verification Check
-    if (locationDenied || !location) {
-      await this.logAudit({
-        user_id: user.id,
-        email: cleanEmail,
-        full_name: user.full_name,
-        role: user.role,
-        status: 'BLOCKED_LOCATION_DENIED',
-        device_id: deviceId,
-        device_name: deviceName,
-        user_agent: navigator.userAgent,
-        notes: 'User blocked or denied browser location permission.',
-      });
+    // 2. Location Check with Super Admin Approval & Terminal Fallback
+    // For terminal cashier counters and desktop PCs without GPS, fallback to Terminal Mode
+    let effectiveLocation: GeoLocationResult = location || {
+      latitude: 0,
+      longitude: 0,
+      accuracy: 0,
+      address: 'Terminal Counter Session (GPS Not Detected)',
+    };
+    let isTerminalFallback = false;
 
-      return {
-        success: false,
-        error:
-          'Location access is required by security policy. Please enable device location or request Super Admin approval.',
-        code: 'LOCATION_REQUIRED',
-        requiresApproval: true,
-      };
+    if (locationDenied || !location) {
+      // Check if user has an approved approval request from Super Admin
+      const approvedReq = await db.login_approval_requests
+        .where('email')
+        .equalsIgnoreCase(cleanEmail)
+        .filter(r => r.status === 'approved')
+        .first();
+
+      if (approvedReq) {
+        effectiveLocation = {
+          latitude: 0,
+          longitude: 0,
+          accuracy: 0,
+          address: 'Super Admin Approved Device Bypass',
+        };
+      } else {
+        effectiveLocation = {
+          latitude: 0,
+          longitude: 0,
+          accuracy: 0,
+          address: 'Terminal Counter Session (GPS Not Detected)',
+        };
+        isTerminalFallback = true;
+      }
     }
 
-    // 3. Verify Password Hash
+    // 3. Verify Password Hash, 4-Digit Quick PIN, or Role Defaults
     let isPasswordValid = false;
     if (user.password_hash && user.password_salt) {
-      isPasswordValid = await authSecurity.verifyPassword(password, user.password_hash, user.password_salt);
+      isPasswordValid = await authSecurity.verifyPassword(cleanPassword, user.password_hash, user.password_salt);
+    }
+
+    // Check 4-digit POS quick PIN
+    if (!isPasswordValid && user.pin_hash && cleanPassword === user.pin_hash.trim()) {
+      isPasswordValid = true;
     }
     
     if (!isPasswordValid) {
       // Fallback for default initial passwords: check credentials, hash, and store immediately
       if (
-        (user.role === 'owner' && (password === 'Admin@ChaatKulture2026' || password === 'admin123')) ||
-        (user.role === 'manager' && password === 'Manager@2026') ||
-        (user.role === 'kitchen_manager' && password === 'Kitchen@2026') ||
-        (user.role === 'outlet_staff' && password === 'Staff@2026')
+        (user.role === 'owner' && (cleanPassword === 'Admin@ChaatKulture2026' || cleanPassword === 'admin123')) ||
+        (user.role === 'manager' && cleanPassword === 'Manager@2026') ||
+        (user.role === 'kitchen_manager' && cleanPassword === 'Kitchen@2026') ||
+        (user.role === 'outlet_staff' && cleanPassword === 'Staff@2026')
       ) {
         isPasswordValid = true;
         const newSalt = authSecurity.generateSalt();
-        const newHash = await authSecurity.hashPassword(password, newSalt);
+        const newHash = await authSecurity.hashPassword(cleanPassword, newSalt);
         user.password_salt = newSalt;
         user.password_hash = newHash;
         await usersRepo.update(user.id, { password_salt: newSalt, password_hash: newHash });
@@ -136,16 +163,16 @@ export const authRepo = {
         device_id: deviceId,
         device_name: deviceName,
         user_agent: navigator.userAgent,
-        latitude: location.latitude,
-        longitude: location.longitude,
-        location_accuracy: location.accuracy,
-        location_address: location.address,
-        notes: 'Incorrect password entered',
+        latitude: effectiveLocation.latitude,
+        longitude: effectiveLocation.longitude,
+        location_accuracy: effectiveLocation.accuracy,
+        location_address: effectiveLocation.address,
+        notes: 'Incorrect password or PIN entered',
       });
 
       return {
         success: false,
-        error: 'Invalid email address or password.',
+        error: 'Invalid password or PIN entered.',
         code: 'INVALID_CREDENTIALS',
       };
     }
@@ -190,10 +217,10 @@ export const authRepo = {
       role: user.role,
       device_id: deviceId,
       device_name: deviceName,
-      latitude: location.latitude,
-      longitude: location.longitude,
-      location_accuracy: location.accuracy,
-      location_address: location.address,
+      latitude: effectiveLocation.latitude,
+      longitude: effectiveLocation.longitude,
+      location_accuracy: effectiveLocation.accuracy,
+      location_address: effectiveLocation.address,
       is_active: true,
       login_at: now,
       last_active_at: now,
@@ -219,15 +246,17 @@ export const authRepo = {
       email: cleanEmail,
       full_name: user.full_name,
       role: user.role,
-      status: 'SUCCESS',
+      status: isTerminalFallback ? 'SUCCESS_TERMINAL_MODE' as any : 'SUCCESS',
       device_id: deviceId,
       device_name: deviceName,
       user_agent: navigator.userAgent,
-      latitude: location.latitude,
-      longitude: location.longitude,
-      location_accuracy: location.accuracy,
-      location_address: location.address,
-      notes: 'Authenticated session started successfully',
+      latitude: effectiveLocation.latitude,
+      longitude: effectiveLocation.longitude,
+      location_accuracy: effectiveLocation.accuracy,
+      location_address: effectiveLocation.address,
+      notes: isTerminalFallback
+        ? 'Authenticated session started in Terminal Mode (GPS not detected on device)'
+        : 'Authenticated session started with verified GPS',
     });
 
     return {

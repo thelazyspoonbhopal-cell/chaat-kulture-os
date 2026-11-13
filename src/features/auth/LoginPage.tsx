@@ -27,7 +27,7 @@ interface LoginPageProps {
 }
 
 export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
-  const { showToast, refreshData } = useApp();
+  const { showToast, refreshData, login } = useApp();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -76,7 +76,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
 
     let activeCoords = coords;
 
-    // If location is not yet acquired, request it now
+    // If location is not yet acquired, attempt to request it
     if (!activeCoords) {
       try {
         activeCoords = await authSecurity.requestUserLocation();
@@ -84,11 +84,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
         setLocationStatus('granted');
       } catch (err: any) {
         setLocationStatus('denied');
-        setIsSubmitting(false);
-        setErrorMessage(
-          'Location access is required by security policy. Please enable device location in your browser or request Super Admin approval.'
-        );
-        return;
+        // Do not abort login for terminal cashiers; authRepo will authenticate in Terminal Mode
       }
     }
 
@@ -96,12 +92,15 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
       const res: LoginResult = await authRepo.login({
         email,
         password,
-        location: activeCoords,
-        locationDenied: locationStatus === 'denied',
+        location: activeCoords || undefined,
+        locationDenied: !activeCoords || locationStatus === 'denied',
       });
 
       if (res.success) {
-        showToast(`Welcome back, ${res.user?.full_name}! Single device session active.`, 'success');
+        if (login && res.user && res.session) {
+          login(res.user, res.session);
+        }
+        showToast(`Welcome back, ${res.user?.full_name}! Active session started.`, 'success');
         await refreshData();
         onLoginSuccess();
       } else {
@@ -251,14 +250,14 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
             <div className="space-y-1">
               <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
                 <Mail className="w-3.5 h-3.5 text-slate-400" />
-                <span>Email Address</span>
+                <span>Email Address or Registered Phone</span>
               </label>
               <input
-                type="email"
+                type="text"
                 required
                 value={email}
                 onChange={e => setEmail(e.target.value)}
-                placeholder="e.g. admin@chaatkulture.com"
+                placeholder="e.g. 9826000004 or staff@chaatkulture.com"
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-orange-500"
               />
             </div>
@@ -267,7 +266,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
               <div className="flex justify-between items-center">
                 <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
                   <KeyRound className="w-3.5 h-3.5 text-slate-400" />
-                  <span>Password</span>
+                  <span>Password or 4-Digit POS PIN</span>
                 </label>
               </div>
               <div className="relative">
@@ -276,7 +275,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
                   required
                   value={password}
                   onChange={e => setPassword(e.target.value)}
-                  placeholder="••••••••••••"
+                  placeholder="Password or 4-digit PIN"
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-3.5 pr-10 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-orange-500"
                 />
                 <button

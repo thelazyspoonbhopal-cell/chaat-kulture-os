@@ -140,6 +140,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setCurrentUser(active.user);
         setCurrentRole(active.user.role);
         effectiveUser = active.user;
+
+        // Auto-navigate to allowed landing view if currently on dashboard or admin
+        if (active.user.role === 'outlet_staff') {
+          setActiveTab(prev => (prev === 'dashboard' || prev === 'admin' ? 'sales' : prev));
+        } else if (active.user.role === 'kitchen_manager') {
+          setActiveTab(prev => (prev === 'dashboard' || prev === 'admin' ? 'kitchen' : prev));
+        }
       } else {
         setIsAuthenticated(false);
         setActiveSession(null);
@@ -353,6 +360,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setActiveSession(session);
     setCurrentUser(user);
     setCurrentRole(user.role);
+    if (user.role === 'outlet_staff') {
+      setActiveTab('sales');
+    } else if (user.role === 'kitchen_manager') {
+      setActiveTab('kitchen');
+    } else {
+      setActiveTab('dashboard');
+    }
     showToast(`Welcome back, ${user.full_name}! Active session started.`, 'success');
   };
 
@@ -364,6 +378,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } finally {
       setIsAuthenticated(false);
       setActiveSession(null);
+      setActiveTab('sales'); // Reset tab so next login doesn't get trapped in admin
       showToast('You have been securely signed out.', 'info');
     }
   };
