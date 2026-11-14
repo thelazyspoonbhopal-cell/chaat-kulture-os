@@ -7,11 +7,89 @@ import type {
   InventoryMovement,
   InventoryBalance,
 } from '../../types';
+import { fetchGistFile, updateGistFiles } from '../sync/cloudRegistry';
+
+export const TRANSFERS_GIST_FILE = 'chaat_kulture_transfers.json';
+
+export interface CloudTransfersPayload {
+  stock_requests: StockRequest[];
+  dispatches: Dispatch[];
+  updated_at: string;
+}
+
+let isTransfersSyncing = false;
+let transfersSyncTimeout: any = null;
 
 export const transfersRepo = {
+  // Cloud Registry Sync
+  async fetchCloudTransfers(): Promise<CloudTransfersPayload | null> {
+    try {
+      const data = await fetchGistFile<CloudTransfersPayload>(TRANSFERS_GIST_FILE);
+      if (data && (Array.isArray(data.stock_requests) || Array.isArray(data.dispatches))) {
+        return data;
+      }
+    } catch (err) {
+      console.warn('[TransfersRepo] Failed to fetch cloud transfers:', err);
+    }
+    return null;
+  },
+
+  async syncTransfersToCloud(): Promise<boolean> {
+    try {
+      const [reqs, dsps] = await Promise.all([
+        db.stock_requests.toArray(),
+        db.dispatches.toArray(),
+      ]);
+
+      const payload: CloudTransfersPayload = {
+        stock_requests: reqs,
+        dispatches: dsps,
+        updated_at: new Date().toISOString(),
+      };
+
+      return await updateGistFiles({
+        [TRANSFERS_GIST_FILE]: payload,
+      });
+    } catch (err) {
+      console.error('[TransfersRepo] Failed to sync transfers to cloud:', err);
+      return false;
+    }
+  },
+
+  debouncedSyncToCloud() {
+    if (transfersSyncTimeout) clearTimeout(transfersSyncTimeout);
+    transfersSyncTimeout = setTimeout(() => {
+      this.syncTransfersToCloud().catch(e => console.warn('[TransfersRepo] Background sync failed:', e));
+    }, 2000);
+  },
+
+  async syncFromCloud(force = false): Promise<void> {
+    if (isTransfersSyncing && !force) return;
+    isTransfersSyncing = true;
+    try {
+      const cloudData = await this.fetchCloudTransfers();
+      if (cloudData) {
+        if (Array.isArray(cloudData.stock_requests) && cloudData.stock_requests.length > 0) {
+          for (const r of cloudData.stock_requests) await db.stock_requests.put(r);
+        }
+        if (Array.isArray(cloudData.dispatches) && cloudData.dispatches.length > 0) {
+          for (const d of cloudData.dispatches) await db.dispatches.put(d);
+        }
+      }
+    } catch (err) {
+      console.error('[TransfersRepo] Sync from cloud failed:', err);
+    } finally {
+      isTransfersSyncing = false;
+    }
+  },
+
   // Stock Requests / Indents
   async getStockRequests(filters?: { from_location_id?: string; to_location_id?: string }): Promise<StockRequest[]> {
     let list = await db.stock_requests.toArray();
+    if (list.length === 0) {
+      await this.syncFromCloud();
+      list = await db.stock_requests.toArray();
+    }
     if (filters?.from_location_id) {
       list = list.filter(r => r.from_location_id === filters.from_location_id);
     }
@@ -69,6 +147,7 @@ export const transfersRepo = {
     };
 
     await db.stock_requests.put(newRequest);
+    this.debouncedSyncToCloud();
 
     // Audit log
     await db.audit_logs.put({
@@ -88,6 +167,10 @@ export const transfersRepo = {
   // Dispatches & Delivery Challans
   async getDispatches(filters?: { from_location_id?: string; to_location_id?: string; status?: string }): Promise<Dispatch[]> {
     let list = await db.dispatches.toArray();
+    if (list.length === 0) {
+      await this.syncFromCloud();
+      list = await db.dispatches.toArray();
+    }
     if (filters?.from_location_id) {
       list = list.filter(d => d.from_location_id === filters.from_location_id);
     }
@@ -241,6 +324,7 @@ export const transfersRepo = {
       });
     });
 
+    this.debouncedSyncToCloud();
     return newDispatch;
   },
 
@@ -378,6 +462,7 @@ export const transfersRepo = {
     });
 
     const refreshed = await db.dispatches.get(dispatchId);
+    this.debouncedSyncToCloud();
     return refreshed!;
   },
 
@@ -679,6 +764,7 @@ export const transfersRepo = {
     });
 
     const refreshed = await db.dispatches.get(dispatchId);
+    this.debouncedSyncToCloud();
     return refreshed!;
   },
 

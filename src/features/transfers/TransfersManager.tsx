@@ -4,6 +4,7 @@ import { db } from '../../lib/db';
 import { transfersRepo } from '../../lib/dal/transfersRepo';
 import { inventoryRepo } from '../../lib/dal/inventoryRepo';
 import { productionRepo } from '../../lib/dal/productionRepo';
+import { TransferPOSModal } from './TransferPOSModal';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Select } from '../../components/ui/Select';
@@ -84,6 +85,11 @@ export const TransfersManager: React.FC = () => {
   const [directDispatchNotes, setDirectDispatchNotes] = useState<string>('');
   const [isDirectDispatching, setIsDirectDispatching] = useState<boolean>(false);
   const [extraItemId, setExtraItemId] = useState<string>('');
+
+  // POS Transfers State
+  const [isPOSIndentOpen, setIsPOSIndentOpen] = useState<boolean>(false);
+  const [isPOSDispatchOpen, setIsPOSDispatchOpen] = useState<boolean>(false);
+  const [posDirectDispatchReq, setPosDirectDispatchReq] = useState<StockRequest | null>(null);
 
   // Item Controls & Modals State
   const [viewingReq, setViewingReq] = useState<StockRequest | null>(null);
@@ -515,13 +521,23 @@ export const TransfersManager: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2">
-          <Button variant="secondary" size="sm" onClick={() => setIsIndentModalOpen(true)}>
-            <Plus className="w-3.5 h-3.5" />
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => setIsPOSIndentOpen(true)}
+            className="bg-slate-800 hover:bg-slate-750 text-white font-bold flex items-center gap-1.5 shadow"
+          >
+            <Plus className="w-3.5 h-3.5 text-orange-400" />
             <span>+ Create Stock Indent</span>
           </Button>
 
-          <Button variant="primary" size="sm" onClick={() => setIsDispatchModalOpen(true)}>
-            <Send className="w-3.5 h-3.5" />
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => setIsPOSDispatchOpen(true)}
+            className="bg-orange-600 hover:bg-orange-500 text-white font-bold flex items-center gap-1.5 shadow"
+          >
+            <Truck className="w-3.5 h-3.5" />
             <span>+ Dispatch Challan</span>
           </Button>
         </div>
@@ -605,7 +621,7 @@ export const TransfersManager: React.FC = () => {
               title="No Stock Indents Logged"
               description="Outlets submit daily or urgent stock indents to the Base Kitchen or Central Store. Click '+ Create Stock Indent' to test."
               actionLabel="+ Create First Indent"
-              onAction={() => setIsIndentModalOpen(true)}
+              onAction={() => setIsPOSIndentOpen(true)}
             />
           ) : (
             <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
@@ -681,14 +697,14 @@ export const TransfersManager: React.FC = () => {
                                 <span>View</span>
                               </Button>
 
-                              {/* Direct Dispatch with Quantity Editing */}
+                              {/* Direct Dispatch with Quantity Editing (POS Style) */}
                               {(req.status === 'submitted' || req.status === 'approved') && (
                                 <Button
                                   variant="primary"
                                   size="sm"
-                                  onClick={() => openDirectDispatchModal(req)}
+                                  onClick={() => setPosDirectDispatchReq(req)}
                                   className="bg-orange-600 hover:bg-orange-500 text-white font-bold flex items-center gap-1.5 shadow-sm text-xs"
-                                  title="Edit quantities and directly dispatch delivery challan to outlet"
+                                  title="Open POS Dispatch Station to adjust quantities and dispatch"
                                 >
                                   <Truck className="w-3.5 h-3.5" />
                                   <span>Dispatch</span>
@@ -781,7 +797,7 @@ export const TransfersManager: React.FC = () => {
               title="No Dispatch Challans"
               description="Base Kitchen or Central Store creates dispatch challans against outlet requests. Stock enters in-transit until confirmed received."
               actionLabel="+ Create Dispatch Challan"
-              onAction={() => setIsDispatchModalOpen(true)}
+              onAction={() => setIsPOSDispatchOpen(true)}
             />
           ) : (
             <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
@@ -2131,7 +2147,7 @@ export const TransfersManager: React.FC = () => {
                   onClick={() => {
                     const r = viewingReq;
                     setViewingReq(null);
-                    openDirectDispatchModal(r);
+                    setPosDirectDispatchReq(r);
                   }}
                   className="bg-orange-600 hover:bg-orange-500 font-bold flex items-center gap-1.5 shadow"
                 >
@@ -2303,6 +2319,29 @@ export const TransfersManager: React.FC = () => {
           </div>
         </form>
       </Modal>
+
+      {/* ===================== TRANSFER POS MODALS ===================== */}
+      <TransferPOSModal
+        isOpen={isPOSIndentOpen}
+        onClose={() => setIsPOSIndentOpen(false)}
+        mode="indent"
+        onSuccess={loadData}
+      />
+
+      <TransferPOSModal
+        isOpen={isPOSDispatchOpen}
+        onClose={() => setIsPOSDispatchOpen(false)}
+        mode="dispatch"
+        onSuccess={loadData}
+      />
+
+      <TransferPOSModal
+        isOpen={!!posDirectDispatchReq}
+        onClose={() => setPosDirectDispatchReq(null)}
+        mode="dispatch"
+        linkedRequest={posDirectDispatchReq}
+        onSuccess={loadData}
+      />
     </div>
   );
 };
