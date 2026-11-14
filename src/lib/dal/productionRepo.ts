@@ -1,13 +1,394 @@
 import { db } from '../db';
-import type { ProductionRecord, InventoryMovement, InventoryBalance } from '../../types';
+import type { ProductionRecord, InventoryMovement, InventoryBalance, InventoryItem } from '../../types';
+
+export interface BatchProductionItemInput {
+  inventory_item_id: string;
+  item_name?: string;
+  quantity_produced: number;
+  unit: string;
+  notes?: string;
+}
+
+export interface BatchProductionInput {
+  business_id: string;
+  location_id: string;
+  items: BatchProductionItemInput[];
+  notes?: string;
+  created_by?: string;
+  production_date?: string;
+  is_demo?: boolean;
+}
+
+export const DEFAULT_KITCHEN_PREPARED_ITEMS: Omit<InventoryItem, 'created_at'>[] = [
+  {
+    id: 'inv_prep_pb_01',
+    business_id: 'biz_chaatkulture_01',
+    category_id: 'invcat_prepared',
+    category_type: 'prepared_food',
+    name: 'Pav Bhaji Special Base (Cooked)',
+    code: 'PR-PB-01',
+    base_unit: 'kg',
+    cost_per_unit: 85,
+    min_stock_alert: 20,
+    is_active: true,
+  },
+  {
+    id: 'inv_prep_ch_01',
+    business_id: 'biz_chaatkulture_01',
+    category_id: 'invcat_prepared',
+    category_type: 'prepared_food',
+    name: 'Amritsari Chole Gravy (Cooked)',
+    code: 'PR-CH-01',
+    base_unit: 'kg',
+    cost_per_unit: 95,
+    min_stock_alert: 15,
+    is_active: true,
+  },
+  {
+    id: 'inv_prep_pp_01',
+    business_id: 'biz_chaatkulture_01',
+    category_id: 'invcat_prepared',
+    category_type: 'prepared_food',
+    name: 'Pani Puri Crispy Puris',
+    code: 'PR-PP-01',
+    base_unit: 'pc',
+    cost_per_unit: 0.8,
+    min_stock_alert: 500,
+    is_active: true,
+  },
+  {
+    id: 'inv_prep_pd_01',
+    business_id: 'biz_chaatkulture_01',
+    category_id: 'invcat_prepared',
+    category_type: 'prepared_food',
+    name: 'Crisp Papdi Wafers',
+    code: 'PR-PD-01',
+    base_unit: 'pc',
+    cost_per_unit: 0.9,
+    min_stock_alert: 300,
+    is_active: true,
+  },
+  {
+    id: 'inv_prep_sv_01',
+    business_id: 'biz_chaatkulture_01',
+    category_id: 'invcat_prepared',
+    category_type: 'prepared_food',
+    name: 'Nylon Sev Fresh Batch',
+    code: 'PR-SV-01',
+    base_unit: 'kg',
+    cost_per_unit: 110,
+    min_stock_alert: 10,
+    is_active: true,
+  },
+  {
+    id: 'inv_prep_tp_01',
+    business_id: 'biz_chaatkulture_01',
+    category_id: 'invcat_prepared',
+    category_type: 'prepared_food',
+    name: 'Teekha Pudina Mint Pani',
+    code: 'PR-TP-01',
+    base_unit: 'ltr',
+    cost_per_unit: 20,
+    min_stock_alert: 25,
+    is_active: true,
+  },
+  {
+    id: 'inv_prep_hp_01',
+    business_id: 'biz_chaatkulture_01',
+    category_id: 'invcat_prepared',
+    category_type: 'prepared_food',
+    name: 'Khatta Meetha Hing Pani',
+    code: 'PR-HP-01',
+    base_unit: 'ltr',
+    cost_per_unit: 22,
+    min_stock_alert: 20,
+    is_active: true,
+  },
+  {
+    id: 'inv_prep_sc_01',
+    business_id: 'biz_chaatkulture_01',
+    category_id: 'invcat_prepared',
+    category_type: 'prepared_food',
+    name: 'Sweet Tamarind Saunth Chutney',
+    code: 'PR-SC-01',
+    base_unit: 'ltr',
+    cost_per_unit: 65,
+    min_stock_alert: 15,
+    is_active: true,
+  },
+  {
+    id: 'inv_prep_gc_01',
+    business_id: 'biz_chaatkulture_01',
+    category_id: 'invcat_prepared',
+    category_type: 'prepared_food',
+    name: 'Green Coriander Mint Chutney',
+    code: 'PR-GC-01',
+    base_unit: 'ltr',
+    cost_per_unit: 55,
+    min_stock_alert: 15,
+    is_active: true,
+  },
+  {
+    id: 'inv_prep_lc_01',
+    business_id: 'biz_chaatkulture_01',
+    category_id: 'invcat_prepared',
+    category_type: 'prepared_food',
+    name: 'Garlic Red Chilli Chutney',
+    code: 'PR-LC-01',
+    base_unit: 'kg',
+    cost_per_unit: 75,
+    min_stock_alert: 10,
+    is_active: true,
+  },
+  {
+    id: 'inv_prep_al_01',
+    business_id: 'biz_chaatkulture_01',
+    category_id: 'invcat_semi',
+    category_type: 'semi_prepared',
+    name: 'Boiled & Spiced Potato Mix',
+    code: 'PR-AL-01',
+    base_unit: 'kg',
+    cost_per_unit: 35,
+    min_stock_alert: 30,
+    is_active: true,
+  },
+  {
+    id: 'inv_prep_bd_01',
+    business_id: 'biz_chaatkulture_01',
+    category_id: 'invcat_semi',
+    category_type: 'semi_prepared',
+    name: 'Bhature Leavened Dough',
+    code: 'PR-BD-01',
+    base_unit: 'kg',
+    cost_per_unit: 45,
+    min_stock_alert: 15,
+    is_active: true,
+  },
+  {
+    id: 'inv_prep_db_01',
+    business_id: 'biz_chaatkulture_01',
+    category_id: 'invcat_prepared',
+    category_type: 'prepared_food',
+    name: 'Urad Dal Vada / Bhalla',
+    code: 'PR-DB-01',
+    base_unit: 'pc',
+    cost_per_unit: 3.5,
+    min_stock_alert: 100,
+    is_active: true,
+  },
+  {
+    id: 'inv_prep_mc_01',
+    business_id: 'biz_chaatkulture_01',
+    category_id: 'invcat_prepared',
+    category_type: 'prepared_food',
+    name: 'Fresh Spiced Masala Chaas',
+    code: 'PR-MC-01',
+    base_unit: 'ltr',
+    cost_per_unit: 20,
+    min_stock_alert: 25,
+    is_active: true,
+  },
+  {
+    id: 'inv_prep_sl_01',
+    business_id: 'biz_chaatkulture_01',
+    category_id: 'invcat_prepared',
+    category_type: 'prepared_food',
+    name: 'Sweet Thick Lassi Base',
+    code: 'PR-SL-01',
+    base_unit: 'ltr',
+    cost_per_unit: 35,
+    min_stock_alert: 20,
+    is_active: true,
+  },
+  {
+    id: 'inv_prep_gj_01',
+    business_id: 'biz_chaatkulture_01',
+    category_id: 'invcat_prepared',
+    category_type: 'prepared_food',
+    name: 'Gulab Jamun (Cooked in Syrup)',
+    code: 'PR-GJ-01',
+    base_unit: 'pc',
+    cost_per_unit: 6.0,
+    min_stock_alert: 100,
+    is_active: true,
+  },
+];
 
 export const productionRepo = {
+  /**
+   * Seed standard kitchen production dishes if none exist
+   */
+  async ensureDefaultKitchenItems(): Promise<InventoryItem[]> {
+    const allItems = await db.inventory_items.toArray();
+    const preps = allItems.filter(
+      i => i.category_type === 'prepared_food' || i.category_type === 'semi_prepared'
+    );
+
+    if (preps.length === 0) {
+      const now = new Date().toISOString();
+      const locations = await db.locations.toArray();
+      const newItems: InventoryItem[] = DEFAULT_KITCHEN_PREPARED_ITEMS.map(item => ({
+        ...item,
+        created_at: now,
+      }));
+
+      await db.inventory_items.bulkPut(newItems);
+
+      // Initialize zero balances for these items
+      const balances: InventoryBalance[] = [];
+      for (const item of newItems) {
+        for (const loc of locations) {
+          balances.push({
+            id: `bal_${loc.id}_${item.id}`,
+            business_id: 'biz_chaatkulture_01',
+            location_id: loc.id,
+            inventory_item_id: item.id,
+            available_quantity: 0,
+            in_transit_quantity: 0,
+            last_updated: now,
+          });
+        }
+      }
+      if (balances.length > 0) {
+        await db.inventory_balances.bulkPut(balances);
+      }
+
+      return newItems;
+    }
+
+    return preps;
+  },
+
   async getRecords(locationId?: string): Promise<ProductionRecord[]> {
     let list = await db.production_records.toArray();
     if (locationId) {
       list = list.filter(r => r.location_id === locationId);
     }
     return list.sort((a, b) => (b.production_date || b.created_at || '').localeCompare(a.production_date || a.created_at || ''));
+  },
+
+  /**
+   * Get all records sharing a specific batch number (for multi-item batch details)
+   */
+  async getRecordsByBatchNumber(batchNumber: string): Promise<ProductionRecord[]> {
+    return await db.production_records.where('batch_number').equals(batchNumber).toArray();
+  },
+
+  /**
+   * Record multiple items produced simultaneously in ONE batch run (POS-style multi-item entry)
+   */
+  async recordBatchProduction(data: BatchProductionInput): Promise<{
+    batch_number: string;
+    records: ProductionRecord[];
+    total_items: number;
+    total_quantity: number;
+  }> {
+    if (!data.items || data.items.length === 0) {
+      throw new Error('At least one item must be added to the production batch.');
+    }
+
+    const now = data.production_date || new Date().toISOString();
+    const dateCode = now.split('T')[0].replace(/-/g, '');
+    const todayCount = await db.production_records
+      .filter(r => r.production_date.startsWith(now.split('T')[0]))
+      .count();
+    const batchNumber = `BATCH-${dateCode}-${todayCount + 101}`;
+
+    const records: ProductionRecord[] = [];
+    let totalQty = 0;
+
+    await db.transaction('rw', [db.production_records, db.inventory_balances, db.inventory_movements, db.audit_logs], async () => {
+      for (let i = 0; i < data.items.length; i++) {
+        const itemInput = data.items[i];
+        if (itemInput.quantity_produced <= 0) continue;
+
+        const clientTxId = `tx_prod_${Date.now()}_${i}_` + Math.random().toString(36).substr(2, 4);
+        const record: ProductionRecord = {
+          id: `prod_${Date.now()}_${i}_` + Math.random().toString(36).substr(2, 4),
+          client_tx_id: clientTxId,
+          business_id: data.business_id,
+          location_id: data.location_id,
+          batch_number: batchNumber,
+          inventory_item_id: itemInput.inventory_item_id,
+          item_name: itemInput.item_name,
+          quantity_produced: itemInput.quantity_produced,
+          unit: itemInput.unit,
+          production_date: now,
+          notes: itemInput.notes || data.notes,
+          created_by: data.created_by,
+          created_at: new Date().toISOString(),
+          is_demo: data.is_demo,
+        };
+
+        // 1. Save production record
+        await db.production_records.put(record);
+        records.push(record);
+        totalQty += itemInput.quantity_produced;
+
+        // 2. Fetch or initialize balance at production location
+        const balanceKey = `bal_${data.location_id}_${itemInput.inventory_item_id}`;
+        const existingBalance = await db.inventory_balances.get(balanceKey);
+        const currentQty = existingBalance ? existingBalance.available_quantity : 0;
+        const newQty = currentQty + itemInput.quantity_produced;
+
+        await db.inventory_balances.put({
+          id: balanceKey,
+          business_id: data.business_id,
+          location_id: data.location_id,
+          inventory_item_id: itemInput.inventory_item_id,
+          available_quantity: newQty,
+          in_transit_quantity: existingBalance ? existingBalance.in_transit_quantity : 0,
+          last_updated: now,
+          last_updated_by: data.created_by,
+        });
+
+        // 3. Append to movement ledger
+        const movement: InventoryMovement = {
+          id: `mov_${Date.now()}_${i}_` + Math.random().toString(36).substr(2, 4),
+          client_tx_id: clientTxId,
+          business_id: data.business_id,
+          location_id: data.location_id,
+          inventory_item_id: itemInput.inventory_item_id,
+          movement_type: 'production_output',
+          quantity_change: itemInput.quantity_produced,
+          balance_after: newQty,
+          unit: itemInput.unit,
+          batch_reference: batchNumber,
+          notes: itemInput.notes || data.notes || `Kitchen batch production of ${itemInput.quantity_produced} ${itemInput.unit}`,
+          reference_id: record.id,
+          created_by: data.created_by,
+          created_at: now,
+          is_demo: data.is_demo,
+        };
+        await db.inventory_movements.put(movement);
+      }
+
+      // 4. Batch Audit Log
+      await db.audit_logs.put({
+        id: 'audit_' + Date.now(),
+        business_id: data.business_id,
+        action: 'RECORD_BATCH_PRODUCTION',
+        entity: 'production_records',
+        entity_id: batchNumber,
+        location_id: data.location_id,
+        new_data: {
+          batch_number: batchNumber,
+          total_items: records.length,
+          total_quantity: totalQty,
+          items: data.items.map(it => ({ name: it.item_name, qty: it.quantity_produced, unit: it.unit })),
+          notes: data.notes,
+          created_by: data.created_by,
+        },
+        created_at: now,
+      });
+    });
+
+    return {
+      batch_number: batchNumber,
+      records,
+      total_items: records.length,
+      total_quantity: totalQty,
+    };
   },
 
   async recordProduction(data: {
@@ -21,88 +402,23 @@ export const productionRepo = {
     created_by?: string;
     is_demo?: boolean;
   }): Promise<ProductionRecord> {
-    const now = new Date().toISOString();
-    const clientTxId = 'tx_prod_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
-
-    // Batch Number generation: BATCH-YYYYMMDD-COUNT
-    const dateCode = now.split('T')[0].replace(/-/g, '');
-    const todayCount = await db.production_records
-      .filter(r => r.production_date.startsWith(now.split('T')[0]))
-      .count();
-    const batchNumber = `BATCH-${dateCode}-${todayCount + 101}`;
-
-    const record: ProductionRecord = {
-      id: 'prod_' + Date.now(),
-      client_tx_id: clientTxId,
+    const res = await this.recordBatchProduction({
       business_id: data.business_id,
       location_id: data.location_id,
-      batch_number: batchNumber,
-      inventory_item_id: data.inventory_item_id,
-      item_name: data.item_name,
-      quantity_produced: data.quantity_produced,
-      unit: data.unit,
-      production_date: now,
+      items: [
+        {
+          inventory_item_id: data.inventory_item_id,
+          item_name: data.item_name,
+          quantity_produced: data.quantity_produced,
+          unit: data.unit,
+          notes: data.notes,
+        },
+      ],
       notes: data.notes,
       created_by: data.created_by,
-      created_at: now,
       is_demo: data.is_demo,
-    };
-
-    await db.transaction('rw', [db.production_records, db.inventory_balances, db.inventory_movements, db.audit_logs], async () => {
-      // 1. Save production record
-      await db.production_records.put(record);
-
-      // 2. Fetch or initialize balance at production location
-      const balanceKey = `bal_${data.location_id}_${data.inventory_item_id}`;
-      const existingBalance = await db.inventory_balances.get(balanceKey);
-      const currentQty = existingBalance ? existingBalance.available_quantity : 0;
-      const newQty = currentQty + data.quantity_produced;
-
-      await db.inventory_balances.put({
-        id: balanceKey,
-        business_id: data.business_id,
-        location_id: data.location_id,
-        inventory_item_id: data.inventory_item_id,
-        available_quantity: newQty,
-        in_transit_quantity: existingBalance ? existingBalance.in_transit_quantity : 0,
-        last_updated: now,
-        last_updated_by: data.created_by,
-      });
-
-      // 3. Append strictly to movement ledger
-      const movement: InventoryMovement = {
-        id: 'mov_' + Date.now(),
-        client_tx_id: clientTxId,
-        business_id: data.business_id,
-        location_id: data.location_id,
-        inventory_item_id: data.inventory_item_id,
-        movement_type: 'production_output',
-        quantity_change: data.quantity_produced,
-        balance_after: newQty,
-        unit: data.unit,
-        batch_reference: batchNumber,
-        notes: data.notes || `Kitchen batch production of ${data.quantity_produced} ${data.unit}`,
-        reference_id: record.id,
-        created_by: data.created_by,
-        created_at: now,
-        is_demo: data.is_demo,
-      };
-      await db.inventory_movements.put(movement);
-
-      // 4. Audit
-      await db.audit_logs.put({
-        id: 'audit_' + Date.now(),
-        business_id: data.business_id,
-        action: 'RECORD_PRODUCTION',
-        entity: 'production_records',
-        entity_id: record.id,
-        location_id: data.location_id,
-        new_data: { batch_number: batchNumber, qty: data.quantity_produced, unit: data.unit },
-        created_at: now,
-      });
     });
-
-    return record;
+    return res.records[0];
   },
 
   async updateProductionRecord(
