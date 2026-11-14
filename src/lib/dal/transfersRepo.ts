@@ -548,6 +548,7 @@ export const transfersRepo = {
       new_data: { request_number: existing.request_number, reason, deletedBy },
       created_at: now,
     });
+    this.debouncedSyncToCloud();
   },
 
   async updateDispatchStatus(
@@ -789,5 +790,6 @@ export const transfersRepo = {
       new_data: { challan_number: dispatch.challan_number, reason, deletedBy },
       created_at: now,
     });
+    this.debouncedSyncToCloud();
   },
 };
