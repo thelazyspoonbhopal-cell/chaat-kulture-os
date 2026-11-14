@@ -7,8 +7,9 @@ import { Select } from '../ui/Select';
 import { Modal } from '../ui/Modal';
 import { Badge } from '../ui/Badge';
 import { EmptyState } from '../ui/EmptyState';
-import { Plus, Search, Utensils, Edit2, ToggleLeft, ToggleRight, Trash2, Sparkles, AlertCircle } from 'lucide-react';
+import { Plus, Search, Utensils, Edit2, ToggleLeft, ToggleRight, Trash2, Sparkles, AlertCircle, FileSpreadsheet, RefreshCw, Cloud } from 'lucide-react';
 import type { MenuCategory, MenuItem } from '../../types';
+import { MenuExcelUploaderModal } from '../../features/menu/MenuExcelUploaderModal';
 
 export const MenuMaster: React.FC = () => {
   const { showToast, refreshData, currentRole } = useApp();
@@ -21,6 +22,8 @@ export const MenuMaster: React.FC = () => {
   // Modals state
   const [isItemModalOpen, setIsItemModalOpen] = useState<boolean>(false);
   const [isCatModalOpen, setIsCatModalOpen] = useState<boolean>(false);
+  const [isExcelModalOpen, setIsExcelModalOpen] = useState<boolean>(false);
+  const [isSyncingCloud, setIsSyncingCloud] = useState<boolean>(false);
   const [editingItem, setEditingItem] = useState<MenuItem | null>(null);
 
   // Form state
@@ -50,6 +53,26 @@ export const MenuMaster: React.FC = () => {
       showToast('Error loading menu data', 'error');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleCloudSync = async () => {
+    setIsSyncingCloud(true);
+    try {
+      const res = await menuRepo.syncFromCloud(true);
+      showToast(
+        res.synced
+          ? `Cloud sync successful! ${res.count} dishes synced across all devices.`
+          : `Menu is already up to date (${res.count} items).`,
+        'success'
+      );
+      await loadData();
+      await refreshData();
+    } catch (err: any) {
+      console.error(err);
+      showToast(err.message || 'Failed to sync with cloud', 'error');
+    } finally {
+      setIsSyncingCloud(false);
     }
   };
 
@@ -232,7 +255,27 @@ export const MenuMaster: React.FC = () => {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleCloudSync}
+            disabled={isSyncingCloud}
+            className="flex items-center gap-1.5 text-xs text-slate-300 hover:text-white border border-slate-800"
+            title="Synchronize menu with cloud registry across all devices"
+          >
+            <Cloud className={`w-3.5 h-3.5 text-sky-400 ${isSyncingCloud ? 'animate-pulse' : ''}`} />
+            <span>{isSyncingCloud ? 'Syncing...' : 'Cloud Sync'}</span>
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => setIsExcelModalOpen(true)}
+            className="flex items-center gap-1.5 text-xs text-orange-400 border-orange-500/30 hover:bg-orange-500/10"
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5" />
+            <span>Upload Menu (Excel/CSV)</span>
+          </Button>
           <Button variant="secondary" size="sm" onClick={() => setIsCatModalOpen(true)}>
             + Add Category
           </Button>
@@ -608,6 +651,18 @@ export const MenuMaster: React.FC = () => {
           </div>
         </form>
       </Modal>
+      {/* Upload Menu Excel Modal */}
+      <MenuExcelUploaderModal
+        isOpen={isExcelModalOpen}
+        onClose={() => setIsExcelModalOpen(false)}
+        categories={categories}
+        items={items}
+        onImportComplete={async () => {
+          await loadData();
+          await refreshData();
+        }}
+        showToast={showToast}
+      />
     </div>
   );
 };

@@ -5,6 +5,8 @@ import { sandboxRepo } from '../lib/dal/sandboxRepo';
 import { rbacRepo } from '../lib/dal/rbacRepo';
 import { usersRepo } from '../lib/dal/usersRepo';
 import { authRepo } from '../lib/dal/authRepo';
+import { menuRepo } from '../lib/dal/menuRepo';
+import { inventoryRepo } from '../lib/dal/inventoryRepo';
 import { sessionBus } from '../lib/security/sessionChannel';
 import { syncEngine, type SyncEngineStatus } from '../lib/sync/syncEngine';
 import type { Location, UserRole, UserProfile, UserSession, AppPermissionKey, RolePermissionConfig } from '../types';
@@ -122,6 +124,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const refreshData = useCallback(async () => {
     try {
       await initializeDatabaseDefaults();
+
+      // Automatically synchronize master catalog (menu items, categories, inventory, suppliers) from cloud
+      menuRepo.syncFromCloud().catch(e => console.warn('[App] Background menu sync:', e));
+      inventoryRepo.syncFromCloud().catch(e => console.warn('[App] Background inventory sync:', e));
+
       const [allLocs, allUsers] = await Promise.all([
         locationsRepo.getAll(),
         usersRepo.getAll(),

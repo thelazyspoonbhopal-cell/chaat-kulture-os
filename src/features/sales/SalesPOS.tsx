@@ -89,10 +89,19 @@ export const SalesPOS: React.FC = () => {
 
   const loadPOSData = async () => {
     try {
-      const [cats, items] = await Promise.all([
+      let [cats, items] = await Promise.all([
         menuRepo.getCategories(),
         menuRepo.getMenuItems(),
       ]);
+
+      if (items.length === 0) {
+        await menuRepo.syncFromCloud(true);
+        [cats, items] = await Promise.all([
+          menuRepo.getCategories(),
+          menuRepo.getMenuItems(),
+        ]);
+      }
+
       setCategories(cats);
       setMenuItems(items.filter(i => i.is_available));
 

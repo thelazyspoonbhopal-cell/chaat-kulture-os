@@ -1,8 +1,108 @@
 import { db } from '../db';
-import type { InventoryCategory, InventoryItem, Unit, InventoryBalance } from '../../types';
+import type { InventoryCategory, InventoryItem, Unit, InventoryBalance, Supplier } from '../../types';
+import { fetchGistFile, updateGistFiles } from '../sync/cloudRegistry';
+
+export const INVENTORY_GIST_FILE = 'chaat_kulture_inventory.json';
+
+export interface CloudInventoryPayload {
+  categories: InventoryCategory[];
+  items: InventoryItem[];
+  suppliers: Supplier[];
+  updated_at: string;
+}
+
+let isSyncing = false;
+let syncTimeout: any = null;
 
 export const inventoryRepo = {
-  // Categories
+  // ---------------- CLOUD REGISTRY SYNC ----------------
+
+  async fetchCloudInventory(): Promise<CloudInventoryPayload | null> {
+    try {
+      const data = await fetchGistFile<CloudInventoryPayload>(INVENTORY_GIST_FILE);
+      if (data && (Array.isArray(data.items) || Array.isArray(data.suppliers))) {
+        return data;
+      }
+    } catch (err) {
+      console.warn('[InventoryRepo] Failed to fetch cloud inventory:', err);
+    }
+    return null;
+  },
+
+  async syncInventoryToCloud(): Promise<boolean> {
+    try {
+      const [cats, items, sups] = await Promise.all([
+        db.inventory_categories.toArray(),
+        db.inventory_items.toArray(),
+        db.suppliers.toArray(),
+      ]);
+
+      const payload: CloudInventoryPayload = {
+        categories: cats,
+        items,
+        suppliers: sups,
+        updated_at: new Date().toISOString(),
+      };
+
+      return await updateGistFiles({
+        [INVENTORY_GIST_FILE]: payload,
+      });
+    } catch (err) {
+      console.error('[InventoryRepo] Failed to sync inventory to cloud:', err);
+      return false;
+    }
+  },
+
+  debouncedSyncToCloud() {
+    if (syncTimeout) clearTimeout(syncTimeout);
+    syncTimeout = setTimeout(() => {
+      this.syncInventoryToCloud().catch(e => console.warn('[InventoryRepo] Background sync failed:', e));
+    }, 2000);
+  },
+
+  async syncFromCloud(force = false): Promise<void> {
+    if (isSyncing && !force) return;
+    isSyncing = true;
+    try {
+      const [cloudData, localCats, localItems, localSups] = await Promise.all([
+        this.fetchCloudInventory(),
+        db.inventory_categories.toArray(),
+        db.inventory_items.toArray(),
+        db.suppliers.toArray(),
+      ]);
+
+      if (cloudData) {
+        if (Array.isArray(cloudData.categories) && cloudData.categories.length > 0) {
+          for (const c of cloudData.categories) await db.inventory_categories.put(c);
+        }
+        if (Array.isArray(cloudData.items) && cloudData.items.length > 0) {
+          for (const i of cloudData.items) await db.inventory_items.put(i);
+        }
+        if (Array.isArray(cloudData.suppliers) && cloudData.suppliers.length > 0) {
+          for (const s of cloudData.suppliers) await db.suppliers.put(s);
+        }
+
+        // If local has items not in cloud, push union
+        const cloudItemIds = new Set((cloudData.items || []).map(i => i.id));
+        const cloudSupIds = new Set((cloudData.suppliers || []).map(s => s.id));
+        const hasExtra =
+          localItems.some(i => !cloudItemIds.has(i.id)) ||
+          localSups.some(s => !cloudSupIds.has(s.id));
+        if (hasExtra) {
+          await this.syncInventoryToCloud();
+        }
+      } else if (localItems.length > 0 || localSups.length > 0) {
+        await this.syncInventoryToCloud();
+      }
+    } catch (err) {
+      console.error('[InventoryRepo] Sync from cloud failed:', err);
+    } finally {
+      isSyncing = false;
+    }
+  },
+
+  // ---------------- CATEGORIES ----------------
+
   async getCategories(): Promise<InventoryCategory[]> {
     return await db.inventory_categories.toArray();
   },
@@ -16,10 +116,12 @@ export const inventoryRepo = {
       created_at: new Date().toISOString(),
     };
     await db.inventory_categories.put(newCat);
+    this.debouncedSyncToCloud();
     return newCat;
   },
 
-  // Units
+  // ---------------- UNITS ----------------
+
   async getUnits(): Promise<Unit[]> {
     return await db.units.toArray();
   },
@@ -38,9 +140,15 @@ export const inventoryRepo = {
     return newUnit;
   },
 
-  // Inventory Items
+  // ---------------- INVENTORY ITEMS ----------------
+
   async getItems(): Promise<InventoryItem[]> {
-    return await db.inventory_items.toArray();
+    let items = await db.inventory_items.toArray();
+    if (items.length === 0) {
+      await this.syncFromCloud();
+      items = await db.inventory_items.toArray();
+    }
+    return items;
   },
 
   async addItem(item: Omit<InventoryItem, 'id' | 'created_at'>): Promise<InventoryItem> {
@@ -89,6 +197,7 @@ export const inventoryRepo = {
       created_at: now,
     });
 
+    this.debouncedSyncToCloud();
     return newItem;
   },
 
@@ -124,9 +233,12 @@ export const inventoryRepo = {
       new_data: { ...existing, ...updates, code: trimmedCode || undefined },
       created_at: now,
     });
+
+    this.debouncedSyncToCloud();
   },
 
-  // Balances
+  // ---------------- BALANCES ----------------
+
   async getBalancesByLocation(locationId: string): Promise<(InventoryBalance & { item?: InventoryItem })[]> {
     const balances = await db.inventory_balances.where('location_id').equals(locationId).toArray();
     const items = await db.inventory_items.toArray();
@@ -171,9 +283,6 @@ export const inventoryRepo = {
     });
   },
 
-  /**
-   * Reconcile inventory balances with movement ledger
-   */
   async reconcileBalances(locationId: string) {
     const balances = await db.inventory_balances.where('location_id').equals(locationId).toArray();
     const movements = await db.inventory_movements.where('location_id').equals(locationId).toArray();
