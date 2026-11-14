@@ -107,6 +107,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, []);
 
   // Compute strictly accessible locations for the current user and role
+  const currentUserRef = React.useRef<UserProfile | null>(currentUser);
+  currentUserRef.current = currentUser;
+  const currentLocationRef = React.useRef<Location | null>(currentLocation);
+  currentLocationRef.current = currentLocation;
+  const hasCloudSyncedRef = React.useRef<boolean>(false);
+
   const accessibleLocations = useMemo(() => {
     if (!currentUser) return locations;
     const allowedIds = usersRepo.getAccessibleLocationIds(currentUser, locations);
@@ -129,13 +135,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       await initializeDatabaseDefaults();
 
-      // Automatically synchronize master catalog (menu items, categories, inventory, suppliers) from cloud
-      menuRepo.syncFromCloud().catch(e => console.warn('[App] Background menu sync:', e));
-      inventoryRepo.syncFromCloud().catch(e => console.warn('[App] Background inventory sync:', e));
-      salesRepo.syncFromCloud().catch(e => console.warn('[App] Background sales sync:', e));
-      dailyClosingRepo.syncFromCloud().catch(e => console.warn('[App] Background closing sync:', e));
-      transfersRepo.syncFromCloud().catch(e => console.warn('[App] Background transfers sync:', e));
-      productionRepo.syncFromCloud().catch(e => console.warn('[App] Background production sync:', e));
+      // Automatically synchronize master catalog once on startup
+      if (!hasCloudSyncedRef.current) {
+        hasCloudSyncedRef.current = true;
+        menuRepo.syncFromCloud().catch(e => console.warn('[App] Background menu sync:', e));
+        inventoryRepo.syncFromCloud().catch(e => console.warn('[App] Background inventory sync:', e));
+        salesRepo.syncFromCloud().catch(e => console.warn('[App] Background sales sync:', e));
+        dailyClosingRepo.syncFromCloud().catch(e => console.warn('[App] Background closing sync:', e));
+        transfersRepo.syncFromCloud().catch(e => console.warn('[App] Background transfers sync:', e));
+        productionRepo.syncFromCloud().catch(e => console.warn('[App] Background production sync:', e));
+      }
 
       const [allLocs, allUsers] = await Promise.all([
         locationsRepo.getAll(),
@@ -147,7 +156,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       // Initialize / Verify currentUser and active authenticated session
       const active = await authRepo.getActiveSession();
-      let effectiveUser = currentUser;
+      let effectiveUser = currentUserRef.current;
 
       if (active && active.session.is_active) {
         setIsAuthenticated(true);
@@ -183,10 +192,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const userAllowedLocs = allLocs.filter(l => userAllowedIds.includes(l.id));
 
       if (userAllowedLocs.length > 0) {
-        if (!currentLocation || !userAllowedIds.includes(currentLocation.id)) {
+        if (!currentLocationRef.current || !userAllowedIds.includes(currentLocationRef.current.id)) {
           setCurrentLocation(userAllowedLocs[0]);
         }
-      } else if (allLocs.length > 0 && !currentLocation) {
+      } else if (allLocs.length > 0 && !currentLocationRef.current) {
         if (effectiveUser?.role === 'owner' || effectiveUser?.role === 'manager') {
           const defaultLoc = allLocs.find(l => l.code === 'BASE-01') || allLocs[0];
           setCurrentLocation(defaultLoc);
@@ -206,7 +215,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch (err) {
       console.error('Error refreshing app context:', err);
     }
-  }, [currentLocation, currentUser]);
+  }, []);
 
   useEffect(() => {
     refreshData();

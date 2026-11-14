@@ -22,9 +22,22 @@ export function getSyncToken(): string {
  * Fetch a JSON file from the cloud registry with automatic fallback strategy
  */
 export async function fetchGistFile<T>(filename: string): Promise<T | null> {
-  const token = getSyncToken();
+  // Strategy 1: Fast unmetered raw CDN with query cache-buster (0 rate limit consumption)
+  try {
+    const rawUrl = `${GIST_RAW_BASE}/${filename}?_t=${Date.now()}`;
+    const rawRes = await fetch(rawUrl, {
+      cache: 'no-store',
+      headers: { 'Accept': 'application/json' },
+    });
+    if (rawRes.ok) {
+      return (await rawRes.json()) as T;
+    }
+  } catch (err) {
+    console.warn(`[CloudRegistry] Raw CDN fetch fallback for ${filename}:`, err);
+  }
 
-  // Strategy 1: Real-time GitHub Gist API (0-second caching delay)
+  // Strategy 2: GitHub Gist API fallback
+  const token = getSyncToken();
   try {
     const apiRes = await fetch(GIST_API_URL, {
       cache: 'no-store',
@@ -44,20 +57,6 @@ export async function fetchGistFile<T>(filename: string): Promise<T | null> {
     }
   } catch (err) {
     console.warn(`[CloudRegistry] API fetch fallback for ${filename}:`, err);
-  }
-
-  // Strategy 2: Fast raw CDN with query cache-buster
-  try {
-    const rawUrl = `${GIST_RAW_BASE}/${filename}?_t=${Date.now()}`;
-    const rawRes = await fetch(rawUrl, {
-      cache: 'no-store',
-      headers: { 'Accept': 'application/json' },
-    });
-    if (rawRes.ok) {
-      return (await rawRes.json()) as T;
-    }
-  } catch (err) {
-    console.warn(`[CloudRegistry] Raw CDN fetch fallback for ${filename}:`, err);
   }
 
   return null;

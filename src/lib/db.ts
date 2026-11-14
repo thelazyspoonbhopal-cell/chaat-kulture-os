@@ -93,7 +93,7 @@ export class ChaatKultureDexieDB extends Dexie {
       expense_payments: 'id, expense_id, payment_date, is_demo',
       sales: 'id, client_tx_id, location_id, channel, payment_status, created_at, is_demo',
       stock_requests: 'id, client_tx_id, from_location_id, to_location_id, status, required_date, is_demo',
-      production_records: 'id, client_tx_id, location_id, inventory_item_id, production_date, is_demo',
+      production_records: 'id, client_tx_id, batch_number, location_id, inventory_item_id, production_date, is_demo',
       dispatches: 'id, client_tx_id, from_location_id, to_location_id, status, dispatch_date, is_demo',
       wastage_records: 'id, client_tx_id, location_id, inventory_item_id, status, created_at, is_demo',
       daily_closings: 'id, location_id, closing_date, status, is_demo',
@@ -126,6 +126,10 @@ export class ChaatKultureDexieDB extends Dexie {
     });
 
     this.version(6).stores({
+      production_records: 'id, client_tx_id, batch_number, location_id, inventory_item_id, production_date, is_demo',
+    });
+
+    this.version(7).stores({
       production_records: 'id, client_tx_id, batch_number, location_id, inventory_item_id, production_date, is_demo',
     });
   }

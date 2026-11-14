@@ -20,7 +20,36 @@ export interface CloudTransfersPayload {
 
 let isTransfersSyncing = false;
 let transfersSyncTimeout: any = null;
-const deletedTransfersIds = new Set<string>();
+
+const STORAGE_KEY_DELETED = 'ck_deleted_transfers_ids';
+
+function loadDeletedIds(): Set<string> {
+  const set = new Set<string>();
+  // Pre-seed known erased/voided test records so they never resurrect
+  set.add('dsp_1794668982573');
+  set.add('req_1794668929486');
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const raw = localStorage.getItem(STORAGE_KEY_DELETED);
+      if (raw) {
+        const arr = JSON.parse(raw);
+        if (Array.isArray(arr)) arr.forEach((id: string) => set.add(id));
+      }
+    }
+  } catch (e) {}
+  return set;
+}
+
+function persistDeletedId(id: string) {
+  try {
+    deletedTransfersIds.add(id);
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(STORAGE_KEY_DELETED, JSON.stringify(Array.from(deletedTransfersIds)));
+    }
+  } catch (e) {}
+}
+
+const deletedTransfersIds = loadDeletedIds();
 
 export const transfersRepo = {
   // Cloud Registry Sync
@@ -39,7 +68,7 @@ export const transfersRepo = {
   async syncTransfersToCloud(extraDeletedIds?: string[]): Promise<boolean> {
     try {
       if (extraDeletedIds && extraDeletedIds.length > 0) {
-        extraDeletedIds.forEach(id => deletedTransfersIds.add(id));
+        extraDeletedIds.forEach(id => persistDeletedId(id));
       }
 
       const [reqs, dsps] = await Promise.all([
@@ -76,13 +105,15 @@ export const transfersRepo = {
     try {
       const cloudData = await this.fetchCloudTransfers();
       if (cloudData) {
-        // 1. Process tombstones / deleted IDs first so deleted records never come back
+        // 1. Process tombstones / deleted IDs from localStorage and cloud
         if (Array.isArray(cloudData.deleted_ids)) {
-          cloudData.deleted_ids.forEach(id => deletedTransfersIds.add(id));
-          for (const delId of cloudData.deleted_ids) {
-            await db.dispatches.delete(delId);
-            await db.stock_requests.delete(delId);
-          }
+          cloudData.deleted_ids.forEach(id => persistDeletedId(id));
+        }
+
+        const allDeleted = loadDeletedIds();
+        for (const delId of allDeleted) {
+          await db.dispatches.delete(delId);
+          await db.stock_requests.delete(delId);
         }
 
         // 2. Put requests that aren't marked deleted
@@ -90,6 +121,8 @@ export const transfersRepo = {
           for (const r of cloudData.stock_requests) {
             if (!deletedTransfersIds.has(r.id)) {
               await db.stock_requests.put(r);
+            } else {
+              await db.stock_requests.delete(r.id);
             }
           }
         }
@@ -99,6 +132,8 @@ export const transfersRepo = {
           for (const d of cloudData.dispatches) {
             if (!deletedTransfersIds.has(d.id)) {
               await db.dispatches.put(d);
+            } else {
+              await db.dispatches.delete(d.id);
             }
           }
         }
@@ -113,9 +148,12 @@ export const transfersRepo = {
   // Stock Requests / Indents
   async getStockRequests(filters?: { from_location_id?: string; to_location_id?: string }): Promise<StockRequest[]> {
     let list = await db.stock_requests.toArray();
+    const deleted = loadDeletedIds();
+    list = list.filter(r => !deleted.has(r.id));
+
     if (list.length === 0) {
       await this.syncFromCloud();
-      list = await db.stock_requests.toArray();
+      list = (await db.stock_requests.toArray()).filter(r => !deleted.has(r.id));
     }
     if (filters?.from_location_id) {
       list = list.filter(r => r.from_location_id === filters.from_location_id);
@@ -194,9 +232,12 @@ export const transfersRepo = {
   // Dispatches & Delivery Challans
   async getDispatches(filters?: { from_location_id?: string; to_location_id?: string; status?: string }): Promise<Dispatch[]> {
     let list = await db.dispatches.toArray();
+    const deleted = loadDeletedIds();
+    list = list.filter(d => !deleted.has(d.id));
+
     if (list.length === 0) {
       await this.syncFromCloud();
-      list = await db.dispatches.toArray();
+      list = (await db.dispatches.toArray()).filter(d => !deleted.has(d.id));
     }
     if (filters?.from_location_id) {
       list = list.filter(d => d.from_location_id === filters.from_location_id);
@@ -860,7 +901,7 @@ export const transfersRepo = {
 
     const now = new Date().toISOString();
     await db.dispatches.delete(dispatchId);
-    deletedTransfersIds.add(dispatchId);
+    persistDeletedId(dispatchId);
     await db.audit_logs.put({
       id: 'audit_' + Date.now(),
       business_id: dispatch.business_id,
@@ -997,12 +1038,12 @@ export const transfersRepo = {
 
       // 2. Erase the delivery challan
       await db.dispatches.delete(dispatchId);
-      deletedTransfersIds.add(dispatchId);
+      persistDeletedId(dispatchId);
 
       // 3. Erase the linked stock request (indent)
       if (dispatch.stock_request_id) {
         await db.stock_requests.delete(dispatch.stock_request_id);
-        deletedTransfersIds.add(dispatch.stock_request_id);
+        persistDeletedId(dispatch.stock_request_id);
       }
 
       // 4. Audit
