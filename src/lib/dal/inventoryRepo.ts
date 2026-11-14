@@ -82,6 +82,9 @@ export const inventoryRepo = {
           for (const s of cloudData.suppliers) await db.suppliers.put(s);
         }
 
+        // Ensure all items have initialized balances across all locations
+        await this.ensureBalances();
+
         // If local has items not in cloud, push union
         const cloudItemIds = new Set((cloudData.items || []).map(i => i.id));
         const cloudSupIds = new Set((cloudData.suppliers || []).map(s => s.id));
@@ -92,12 +95,50 @@ export const inventoryRepo = {
           await this.syncInventoryToCloud();
         }
       } else if (localItems.length > 0 || localSups.length > 0) {
+        await this.ensureBalances();
         await this.syncInventoryToCloud();
       }
     } catch (err) {
       console.error('[InventoryRepo] Sync from cloud failed:', err);
     } finally {
       isSyncing = false;
+    }
+  },
+
+  async ensureBalances(): Promise<void> {
+    try {
+      const [locations, allItems, existingBalances] = await Promise.all([
+        db.locations.toArray(),
+        db.inventory_items.toArray(),
+        db.inventory_balances.toArray(),
+      ]);
+
+      const balanceKeySet = new Set(existingBalances.map(b => `${b.location_id}_${b.inventory_item_id}`));
+      const missingBalances: InventoryBalance[] = [];
+      const now = new Date().toISOString();
+
+      for (const itm of allItems) {
+        for (const loc of locations) {
+          const key = `${loc.id}_${itm.id}`;
+          if (!balanceKeySet.has(key)) {
+            missingBalances.push({
+              id: `bal_${loc.id}_${itm.id}`,
+              business_id: 'biz_chaatkulture_01',
+              location_id: loc.id,
+              inventory_item_id: itm.id,
+              available_quantity: 0,
+              in_transit_quantity: 0,
+              last_updated: now,
+            });
+          }
+        }
+      }
+
+      if (missingBalances.length > 0) {
+        await db.inventory_balances.bulkPut(missingBalances);
+      }
+    } catch (err) {
+      console.warn('[InventoryRepo] Error ensuring balances:', err);
     }
   },
 

@@ -3,6 +3,7 @@ import { useApp } from '../../context/AppContext';
 import { db } from '../../lib/db';
 import { transfersRepo } from '../../lib/dal/transfersRepo';
 import { inventoryRepo } from '../../lib/dal/inventoryRepo';
+import { productionRepo } from '../../lib/dal/productionRepo';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Select } from '../../components/ui/Select';
@@ -168,10 +169,16 @@ export const TransfersManager: React.FC = () => {
 
   const loadData = async () => {
     try {
-      const [reqs, dsps, items] = await Promise.all([
+      await productionRepo.ensureDefaultKitchenItems();
+      await inventoryRepo.ensureBalances();
+      let items = await inventoryRepo.getItems();
+      if (items.length === 0) {
+        await inventoryRepo.syncFromCloud(true);
+        items = await inventoryRepo.getItems();
+      }
+      const [reqs, dsps] = await Promise.all([
         transfersRepo.getStockRequests(),
         transfersRepo.getDispatches(),
-        inventoryRepo.getItems(),
       ]);
       setRequests(reqs);
       setDispatches(dsps);
@@ -184,6 +191,43 @@ export const TransfersManager: React.FC = () => {
       console.error(err);
     }
   };
+
+  const itemOptions = useMemo(() => {
+    if (inventoryItems.length === 0) {
+      return [{ value: '', label: '-- No items loaded yet --' }];
+    }
+    return [
+      { value: '', label: '-- Select Inventory Item --' },
+      ...inventoryItems.map(i => {
+        const catEmoji = i.category_type === 'prepared_food' ? '🍳' : i.category_type === 'packaging' ? '📦' : i.category_type === 'disposables' ? '🥢' : '🌾';
+        return {
+          value: i.id,
+          label: `${catEmoji} ${i.name} ${i.code ? `[${i.code}]` : ''} (${i.base_unit})`,
+        };
+      }),
+    ];
+  }, [inventoryItems]);
+
+  const requestingLocOptions = useMemo(() => {
+    const pool = isScoped ? accessibleLocations : locations;
+    const filtered = pool.filter(l => l.id !== indentToLoc);
+    const finalPool = filtered.length > 0 ? filtered : pool;
+    return finalPool.map(l => ({ value: l.id, label: `${l.name} (${l.code})` }));
+  }, [isScoped, accessibleLocations, locations, indentToLoc]);
+
+  const fulfillingLocOptions = useMemo(() => {
+    const filtered = locations.filter(l => l.id !== indentFromLoc);
+    const finalPool = filtered.length > 0 ? filtered : locations;
+    return finalPool.map(l => ({
+      value: l.id,
+      label:
+        l.type === 'base_kitchen'
+          ? `🍳 ${l.name} (Cooked Food / Kitchen)`
+          : l.type === 'store_room'
+          ? `📦 ${l.name} (Central Store / Raw Materials)`
+          : `${l.name} (${l.code})`,
+    }));
+  }, [locations, indentFromLoc]);
 
   useEffect(() => {
     loadData();
@@ -966,26 +1010,14 @@ export const TransfersManager: React.FC = () => {
                   if (fallback) setIndentToLoc(fallback.id);
                 }
               }}
-              options={(isScoped ? accessibleLocations : locations)
-                .filter(l => l.id !== indentToLoc)
-                .map(l => ({ value: l.id, label: `${l.name} (${l.code})` }))}
+              options={requestingLocOptions}
             />
 
             <Select
               label="Fulfilling Location *"
               value={indentToLoc}
               onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setIndentToLoc(e.target.value)}
-              options={locations
-                .filter(l => l.id !== indentFromLoc)
-                .map(l => ({
-                  value: l.id,
-                  label:
-                    l.type === 'base_kitchen'
-                      ? `🍳 ${l.name} (Cooked Food / Kitchen)`
-                      : l.type === 'store_room'
-                      ? `📦 ${l.name} (Central Store / Raw Materials)`
-                      : `${l.name} (${l.code})`,
-                }))}
+              options={fulfillingLocOptions}
             />
           </div>
 
@@ -1022,7 +1054,7 @@ export const TransfersManager: React.FC = () => {
                       updated[idx].itemId = e.target.value;
                       setIndentLines(updated);
                     }}
-                    options={inventoryItems.map(i => ({ value: i.id, label: `${i.name} (${i.base_unit})` }))}
+                    options={itemOptions}
                   />
                 </div>
                 <div className="w-28">
@@ -1123,7 +1155,7 @@ export const TransfersManager: React.FC = () => {
                       updated[idx].itemId = e.target.value;
                       setDispatchLines(updated);
                     }}
-                    options={inventoryItems.map(i => ({ value: i.id, label: `${i.name} (${i.base_unit})` }))}
+                    options={itemOptions}
                   />
                 </div>
                 <div className="w-28">
