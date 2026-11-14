@@ -114,6 +114,9 @@ export const TransfersManager: React.FC = () => {
   const [voidChallanReason, setVoidChallanReason] = useState<string>('');
   const [deletingChallan, setDeletingChallan] = useState<Dispatch | null>(null);
   const [deleteChallanReason, setDeleteChallanReason] = useState<string>('');
+  const [erasingChallan, setErasingChallan] = useState<Dispatch | null>(null);
+  const [eraseChallanReason, setEraseChallanReason] = useState<string>('');
+  const [isErasingChallan, setIsErasingChallan] = useState<boolean>(false);
   const [rejectingChallan, setRejectingChallan] = useState<Dispatch | null>(null);
   const [rejectChallanReason, setRejectChallanReason] = useState<string>('');
 
@@ -960,8 +963,8 @@ export const TransfersManager: React.FC = () => {
                                 </Button>
                               )}
 
-                              {/* ONLY Super Admin can Void / Delete */}
-                              {currentRole === 'owner' && (
+                              {/* Super Admin & Manager Void / Erase Actions */}
+                              {(currentRole === 'owner' || currentRole === 'manager' || currentUser?.role === 'owner' || currentUser?.role === 'manager') && (
                                 <>
                                   {(dsp.status === 'in_transit' || dsp.status === 'sent') && (
                                     <Button
@@ -971,8 +974,8 @@ export const TransfersManager: React.FC = () => {
                                         setVoidingChallan(dsp);
                                         setVoidChallanReason('');
                                       }}
-                                      title="Void & Reverse Stock (Super Admin)"
-                                      className="text-rose-400 hover:text-rose-300"
+                                      title="Void & Reverse Stock to Kitchen"
+                                      className="text-amber-400 hover:text-amber-300 font-semibold"
                                     >
                                       <RotateCcw className="w-3.5 h-3.5" />
                                       <span>Void</span>
@@ -982,13 +985,14 @@ export const TransfersManager: React.FC = () => {
                                     variant="ghost"
                                     size="sm"
                                     onClick={() => {
-                                      setDeletingChallan(dsp);
-                                      setDeleteChallanReason('');
+                                      setErasingChallan(dsp);
+                                      setEraseChallanReason('');
                                     }}
-                                    title="Delete Challan (Super Admin Only)"
-                                    className="text-rose-500 hover:text-rose-400"
+                                    title="Erase this Delivery Challan and its linked Indent"
+                                    className="text-rose-400 hover:text-rose-300 font-bold bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 flex items-center gap-1 text-xs"
                                   >
                                     <Trash2 className="w-3.5 h-3.5" />
+                                    <span>Erase Challan & Indent</span>
                                   </Button>
                                 </>
                               )}
@@ -1794,14 +1798,32 @@ export const TransfersManager: React.FC = () => {
               )}
             </div>
 
-            <div className="flex justify-end gap-2">
-              <Button variant="secondary" size="sm" onClick={() => window.print()}>
-                <Printer className="w-3.5 h-3.5" />
-                <span>Print Slip</span>
-              </Button>
-              <Button variant="primary" size="sm" onClick={() => setViewingChallan(null)}>
-                Close
-              </Button>
+            <div className="flex justify-between items-center gap-2 pt-2 border-t border-slate-800">
+              {(currentRole === 'owner' || currentRole === 'manager' || currentUser?.role === 'owner' || currentUser?.role === 'manager') ? (
+                <Button
+                  variant="danger"
+                  size="sm"
+                  onClick={() => {
+                    const c = viewingChallan;
+                    setViewingChallan(null);
+                    setErasingChallan(c);
+                    setEraseChallanReason('');
+                  }}
+                  className="flex items-center gap-1.5 font-bold"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Erase Challan & Indent</span>
+                </Button>
+              ) : <div />}
+              <div className="flex gap-2">
+                <Button variant="secondary" size="sm" onClick={() => window.print()}>
+                  <Printer className="w-3.5 h-3.5" />
+                  <span>Print Slip</span>
+                </Button>
+                <Button variant="primary" size="sm" onClick={() => setViewingChallan(null)}>
+                  Close
+                </Button>
+              </div>
             </div>
           </div>
         )}
@@ -2042,7 +2064,76 @@ export const TransfersManager: React.FC = () => {
         </form>
       </Modal>
 
-      {/* 4b. Rejecting Challan Modal */}
+      {/* 4b. Erase Challan & Linked Indent Modal */}
+      <Modal
+        isOpen={!!erasingChallan}
+        onClose={() => setErasingChallan(null)}
+        title="Admin: Erase Delivery Challan & Linked Indent"
+        subtitle={`Challan #${erasingChallan?.challan_number}`}
+        maxWidth="md"
+      >
+        <form
+          onSubmit={async e => {
+            e.preventDefault();
+            if (!erasingChallan || !eraseChallanReason.trim()) {
+              showToast('Please state a reason for erasing', 'warning');
+              return;
+            }
+            setIsErasingChallan(true);
+            try {
+              await transfersRepo.eraseChallanAndIndent(
+                erasingChallan.id,
+                eraseChallanReason.trim(),
+                currentUser?.full_name || currentRole
+              );
+              showToast(`Completely erased Challan #${erasingChallan.challan_number} and its linked Indent. Stock restored to kitchen.`, 'success');
+              setErasingChallan(null);
+              if (viewingChallan?.id === erasingChallan.id) {
+                setViewingChallan(null);
+              }
+              await loadData();
+            } catch (err: any) {
+              showToast(err.message || 'Error erasing challan and indent', 'error');
+            } finally {
+              setIsErasingChallan(false);
+            }
+          }}
+          className="space-y-4"
+        >
+          <div className="p-3 bg-rose-950/40 border border-rose-800/60 rounded-xl text-xs text-rose-300 space-y-1.5">
+            <div className="font-bold flex items-center gap-1.5 text-sm text-rose-200">
+              <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+              <span>Complete Record & Indent Erasure</span>
+            </div>
+            <p>
+              This will <strong>permanently erase Delivery Challan #{erasingChallan?.challan_number}</strong> AND <strong>erase its linked outlet Indent</strong> from the system.
+            </p>
+            <p className="text-slate-300">
+              Any dispatched or in-transit stock will be reversed and returned to Base Kitchen available inventory.
+            </p>
+          </div>
+
+          <Input
+            label="Mandatory Reason for Erasing Challan & Indent *"
+            placeholder="e.g. Duplicate order / Cancelled by outlet / Incorrect dispatch"
+            value={eraseChallanReason}
+            onChange={e => setEraseChallanReason(e.target.value)}
+            required
+            autoFocus
+          />
+
+          <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
+            <Button variant="secondary" type="button" onClick={() => setErasingChallan(null)} disabled={isErasingChallan}>
+              Cancel
+            </Button>
+            <Button variant="danger" type="submit" disabled={isErasingChallan || !eraseChallanReason.trim()}>
+              {isErasingChallan ? 'Erasing...' : 'Confirm Erase Challan & Indent'}
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* 4c. Rejecting Challan Modal */}
       <Modal
         isOpen={!!rejectingChallan}
         onClose={() => setRejectingChallan(null)}

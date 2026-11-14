@@ -670,8 +670,8 @@ export const transfersRepo = {
   async voidDispatch(dispatchId: string, reason: string, cancelledBy?: string): Promise<Dispatch> {
     const dispatch = await db.dispatches.get(dispatchId);
     if (!dispatch) throw new Error('Dispatch not found');
-    if (dispatch.status !== 'in_transit') {
-      throw new Error(`Cannot void dispatch with status '${dispatch.status}'. Only in-transit dispatches can be voided.`);
+    if (dispatch.status !== 'in_transit' && dispatch.status !== 'sent') {
+      throw new Error(`Cannot void dispatch with status '${dispatch.status}'. Only in-transit or sent dispatches can be voided.`);
     }
 
     const now = new Date().toISOString();
@@ -790,6 +790,156 @@ export const transfersRepo = {
       new_data: { challan_number: dispatch.challan_number, reason, deletedBy },
       created_at: now,
     });
+    this.debouncedSyncToCloud();
+  },
+
+  /**
+   * Super Admin & Manager Erase: Completely reverses stock, erases delivery challan AND its linked indent
+   */
+  async eraseChallanAndIndent(dispatchId: string, reason: string, erasedBy?: string): Promise<void> {
+    const dispatch = await db.dispatches.get(dispatchId);
+    if (!dispatch) throw new Error('Delivery challan not found');
+
+    const now = new Date().toISOString();
+    const clientTxId = 'tx_erase_dsp_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
+
+    await db.transaction('rw', [db.dispatches, db.stock_requests, db.inventory_balances, db.inventory_movements, db.audit_logs], async () => {
+      // 1. Stock reversal if items were sent/in-transit or received
+      if (dispatch.status === 'in_transit' || dispatch.status === 'sent') {
+        for (const item of dispatch.items || []) {
+          // Restore source available balance
+          const sourceBalKey = `bal_${dispatch.from_location_id}_${item.inventory_item_id}`;
+          const sourceBal = await db.inventory_balances.get(sourceBalKey);
+          const currentSourceQty = sourceBal ? sourceBal.available_quantity : 0;
+          const newSourceQty = currentSourceQty + item.dispatched_quantity;
+
+          await db.inventory_balances.put({
+            id: sourceBalKey,
+            business_id: dispatch.business_id,
+            location_id: dispatch.from_location_id,
+            inventory_item_id: item.inventory_item_id,
+            available_quantity: newSourceQty,
+            in_transit_quantity: sourceBal ? sourceBal.in_transit_quantity : 0,
+            last_updated: now,
+            last_updated_by: erasedBy,
+          });
+
+          // Deduct from destination in-transit balance
+          const destBalKey = `bal_${dispatch.to_location_id}_${item.inventory_item_id}`;
+          const destBal = await db.inventory_balances.get(destBalKey);
+          const currentDestTransit = destBal ? destBal.in_transit_quantity : item.dispatched_quantity;
+          const newDestTransit = Math.max(0, currentDestTransit - item.dispatched_quantity);
+
+          await db.inventory_balances.put({
+            id: destBalKey,
+            business_id: dispatch.business_id,
+            location_id: dispatch.to_location_id,
+            inventory_item_id: item.inventory_item_id,
+            available_quantity: destBal ? destBal.available_quantity : 0,
+            in_transit_quantity: newDestTransit,
+            last_updated: now,
+            last_updated_by: erasedBy,
+          });
+
+          // Movement ledger
+          await db.inventory_movements.put({
+            id: 'mov_erase_' + Date.now() + Math.random().toString(36).substr(2, 3),
+            client_tx_id: clientTxId,
+            business_id: dispatch.business_id,
+            location_id: dispatch.from_location_id,
+            inventory_item_id: item.inventory_item_id,
+            movement_type: 'transfer_reversal',
+            quantity_change: item.dispatched_quantity,
+            balance_after: newSourceQty,
+            unit: item.unit,
+            batch_reference: dispatch.challan_number,
+            notes: `CHALLAN & INDENT ERASED: Stock restored to source. Reason: ${reason}`,
+            reference_id: dispatch.id,
+            created_by: erasedBy,
+            created_at: now,
+          });
+        }
+      } else if (dispatch.status === 'received' || dispatch.status === 'partially_received' || dispatch.status === 'delivered') {
+        for (const item of dispatch.items || []) {
+          const qtyToRollback = item.received_quantity || item.dispatched_quantity;
+
+          const destBalKey = `bal_${dispatch.to_location_id}_${item.inventory_item_id}`;
+          const destBal = await db.inventory_balances.get(destBalKey);
+          const currentDestAvail = destBal ? destBal.available_quantity : 0;
+          const newDestAvail = Math.max(0, currentDestAvail - qtyToRollback);
+
+          await db.inventory_balances.put({
+            id: destBalKey,
+            business_id: dispatch.business_id,
+            location_id: dispatch.to_location_id,
+            inventory_item_id: item.inventory_item_id,
+            available_quantity: newDestAvail,
+            in_transit_quantity: destBal ? destBal.in_transit_quantity : 0,
+            last_updated: now,
+            last_updated_by: erasedBy,
+          });
+
+          const sourceBalKey = `bal_${dispatch.from_location_id}_${item.inventory_item_id}`;
+          const sourceBal = await db.inventory_balances.get(sourceBalKey);
+          const currentSourceQty = sourceBal ? sourceBal.available_quantity : 0;
+          const newSourceQty = currentSourceQty + item.dispatched_quantity;
+
+          await db.inventory_balances.put({
+            id: sourceBalKey,
+            business_id: dispatch.business_id,
+            location_id: dispatch.from_location_id,
+            inventory_item_id: item.inventory_item_id,
+            available_quantity: newSourceQty,
+            in_transit_quantity: sourceBal ? sourceBal.in_transit_quantity : 0,
+            last_updated: now,
+            last_updated_by: erasedBy,
+          });
+
+          await db.inventory_movements.put({
+            id: 'mov_erase_rec_' + Date.now() + Math.random().toString(36).substr(2, 3),
+            client_tx_id: clientTxId,
+            business_id: dispatch.business_id,
+            location_id: dispatch.from_location_id,
+            inventory_item_id: item.inventory_item_id,
+            movement_type: 'transfer_reversal',
+            quantity_change: item.dispatched_quantity,
+            balance_after: newSourceQty,
+            unit: item.unit,
+            batch_reference: dispatch.challan_number,
+            notes: `CHALLAN & INDENT ERASED: Received stock reversed. Reason: ${reason}`,
+            reference_id: dispatch.id,
+            created_by: erasedBy,
+            created_at: now,
+          });
+        }
+      }
+
+      // 2. Erase the delivery challan
+      await db.dispatches.delete(dispatchId);
+
+      // 3. Erase the linked stock request (indent)
+      if (dispatch.stock_request_id) {
+        await db.stock_requests.delete(dispatch.stock_request_id);
+      }
+
+      // 4. Audit
+      await db.audit_logs.put({
+        id: 'audit_' + Date.now(),
+        business_id: dispatch.business_id,
+        action: 'ERASE_CHALLAN_AND_INDENT',
+        entity: 'dispatches',
+        entity_id: dispatch.id,
+        location_id: dispatch.from_location_id,
+        new_data: {
+          challan_number: dispatch.challan_number,
+          stock_request_id: dispatch.stock_request_id,
+          reason,
+          erasedBy,
+        },
+        created_at: now,
+      });
+    });
+
     this.debouncedSyncToCloud();
   },
 };
