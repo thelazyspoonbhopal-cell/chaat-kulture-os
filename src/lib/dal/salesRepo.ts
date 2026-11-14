@@ -1,9 +1,90 @@
 import { db } from '../db';
 import type { Sale, SaleItem, SalePayment, SalesChannel } from '../../types';
+import { fetchGistFile, updateGistFiles } from '../sync/cloudRegistry';
+
+export const SALES_GIST_FILE = 'chaat_kulture_sales.json';
+
+export interface CloudSalesPayload {
+  sales: Sale[];
+  updated_at: string;
+}
+
+let isSalesSyncing = false;
+let salesSyncTimeout: any = null;
 
 export const salesRepo = {
+  // ---------------- CLOUD REGISTRY SYNC ----------------
+  async fetchCloudSales(): Promise<CloudSalesPayload | null> {
+    try {
+      const data = await fetchGistFile<CloudSalesPayload>(SALES_GIST_FILE);
+      if (data && Array.isArray(data.sales)) {
+        return data;
+      }
+    } catch (err) {
+      console.warn('[SalesRepo] Failed to fetch cloud sales:', err);
+    }
+    return null;
+  },
+
+  async syncSalesToCloud(): Promise<boolean> {
+    try {
+      const allSales = await db.sales.toArray();
+      const payload: CloudSalesPayload = {
+        sales: allSales,
+        updated_at: new Date().toISOString(),
+      };
+      return await updateGistFiles({
+        [SALES_GIST_FILE]: payload,
+      });
+    } catch (err) {
+      console.error('[SalesRepo] Failed to sync sales to cloud:', err);
+      return false;
+    }
+  },
+
+  debouncedSyncToCloud() {
+    if (salesSyncTimeout) clearTimeout(salesSyncTimeout);
+    salesSyncTimeout = setTimeout(() => {
+      this.syncSalesToCloud().catch(e => console.warn('[SalesRepo] Background sync failed:', e));
+    }, 2000);
+  },
+
+  async syncFromCloud(force = false): Promise<void> {
+    if (isSalesSyncing && !force) return;
+    isSalesSyncing = true;
+    try {
+      const [cloudData, localSales] = await Promise.all([
+        this.fetchCloudSales(),
+        db.sales.toArray(),
+      ]);
+
+      if (cloudData && Array.isArray(cloudData.sales) && cloudData.sales.length > 0) {
+        for (const s of cloudData.sales) {
+          await db.sales.put(s);
+        }
+
+        // If local has sales not yet in cloud, push union
+        const cloudIds = new Set(cloudData.sales.map(s => s.id));
+        const hasExtra = localSales.some(s => !cloudIds.has(s.id));
+        if (hasExtra) {
+          await this.syncSalesToCloud();
+        }
+      } else if (localSales.length > 0) {
+        await this.syncSalesToCloud();
+      }
+    } catch (err) {
+      console.error('[SalesRepo] Sync from cloud failed:', err);
+    } finally {
+      isSalesSyncing = false;
+    }
+  },
+
   async getSales(filters?: { location_id?: string; channel?: SalesChannel; date?: string }): Promise<Sale[]> {
     let list = await db.sales.toArray();
+    if (list.length === 0) {
+      await this.syncFromCloud();
+      list = await db.sales.toArray();
+    }
 
     if (filters?.location_id) {
       list = list.filter(s => s.location_id === filters.location_id);
@@ -98,6 +179,9 @@ export const salesRepo = {
 
     await db.sales.put(newSale);
 
+    // Debounced Cloud Sync across devices
+    this.debouncedSyncToCloud();
+
     // Audit log
     await db.audit_logs.put({
       id: 'audit_' + Date.now(),
@@ -136,6 +220,9 @@ export const salesRepo = {
 
     await db.sales.put(updatedSale);
 
+    // Debounced Cloud Sync across devices
+    this.debouncedSyncToCloud();
+
     // Audit log (never delete original sale)
     await db.audit_logs.put({
       id: 'audit_' + Date.now(),
@@ -161,7 +248,15 @@ export const salesRepo = {
       query = query.filter(s => s.location_id === locationId);
     }
 
-    const salesList = await query.toArray();
+    let salesList = await query.toArray();
+    if (salesList.length === 0) {
+      await this.syncFromCloud();
+      let retryQuery = db.sales.filter(s => s.created_at.startsWith(targetDate));
+      if (locationId) {
+        retryQuery = retryQuery.filter(s => s.location_id === locationId);
+      }
+      salesList = await retryQuery.toArray();
+    }
 
     let totalGross = 0;
     let totalNet = 0;

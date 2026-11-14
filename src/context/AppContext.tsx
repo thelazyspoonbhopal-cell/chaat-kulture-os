@@ -7,6 +7,10 @@ import { usersRepo } from '../lib/dal/usersRepo';
 import { authRepo } from '../lib/dal/authRepo';
 import { menuRepo } from '../lib/dal/menuRepo';
 import { inventoryRepo } from '../lib/dal/inventoryRepo';
+import { salesRepo } from '../lib/dal/salesRepo';
+import { dailyClosingRepo } from '../lib/dal/dailyClosingRepo';
+import { transfersRepo } from '../lib/dal/transfersRepo';
+import { productionRepo } from '../lib/dal/productionRepo';
 import { sessionBus } from '../lib/security/sessionChannel';
 import { syncEngine, type SyncEngineStatus } from '../lib/sync/syncEngine';
 import type { Location, UserRole, UserProfile, UserSession, AppPermissionKey, RolePermissionConfig } from '../types';
@@ -128,6 +132,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // Automatically synchronize master catalog (menu items, categories, inventory, suppliers) from cloud
       menuRepo.syncFromCloud().catch(e => console.warn('[App] Background menu sync:', e));
       inventoryRepo.syncFromCloud().catch(e => console.warn('[App] Background inventory sync:', e));
+      salesRepo.syncFromCloud().catch(e => console.warn('[App] Background sales sync:', e));
+      dailyClosingRepo.syncFromCloud().catch(e => console.warn('[App] Background closing sync:', e));
+      transfersRepo.syncFromCloud().catch(e => console.warn('[App] Background transfers sync:', e));
+      productionRepo.syncFromCloud().catch(e => console.warn('[App] Background production sync:', e));
 
       const [allLocs, allUsers] = await Promise.all([
         locationsRepo.getAll(),
@@ -203,15 +211,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     refreshData();
 
-    // Listen to network status
-    const handleOnline = () => setIsOnline(true);
+    // Listen to network status & focus for cross-device updates
+    const handleOnline = () => {
+      setIsOnline(true);
+      salesRepo.syncFromCloud().catch(() => {});
+      dailyClosingRepo.syncFromCloud().catch(() => {});
+      transfersRepo.syncFromCloud().catch(() => {});
+      productionRepo.syncFromCloud().catch(() => {});
+    };
     const handleOffline = () => setIsOnline(false);
+    const handleFocus = () => {
+      salesRepo.syncFromCloud().catch(() => {});
+      dailyClosingRepo.syncFromCloud().catch(() => {});
+      transfersRepo.syncFromCloud().catch(() => {});
+      productionRepo.syncFromCloud().catch(() => {});
+    };
+
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
+    window.addEventListener('focus', handleFocus);
 
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('focus', handleFocus);
     };
   }, [refreshData]);
 

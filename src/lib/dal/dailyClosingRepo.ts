@@ -1,6 +1,21 @@
 import { db } from '../db';
 import { DailyClosing, CashClosing, StockCount, RecordRevision, SectionStatus } from '../../types';
 import { cashTransfersRepo } from './cashTransfersRepo';
+import { fetchGistFile, updateGistFiles } from '../sync/cloudRegistry';
+import { salesRepo } from './salesRepo';
+
+export const CLOSINGS_GIST_FILE = 'chaat_kulture_closings.json';
+
+export interface CloudClosingsPayload {
+  daily_closings: DailyClosing[];
+  cash_closings: CashClosing[];
+  stock_counts: StockCount[];
+  revisions: RecordRevision[];
+  updated_at: string;
+}
+
+let isClosingSyncing = false;
+let closingSyncTimeout: any = null;
 
 export interface DayClosingLiveStats {
   sales: {
@@ -43,12 +58,115 @@ export interface DayClosingLiveStats {
 }
 
 export const dailyClosingRepo = {
+  // ---------------- CLOUD REGISTRY SYNC ----------------
+  async fetchCloudClosings(): Promise<CloudClosingsPayload | null> {
+    try {
+      const data = await fetchGistFile<CloudClosingsPayload>(CLOSINGS_GIST_FILE);
+      if (data && (Array.isArray(data.daily_closings) || Array.isArray(data.cash_closings))) {
+        return data;
+      }
+    } catch (err) {
+      console.warn('[DailyClosingRepo] Failed to fetch cloud closings:', err);
+    }
+    return null;
+  },
+
+  async syncClosingsToCloud(): Promise<boolean> {
+    try {
+      const [closings, cash, stock, revisions] = await Promise.all([
+        db.daily_closings.toArray(),
+        db.cash_closings.toArray(),
+        db.stock_counts.toArray(),
+        db.record_revisions.toArray(),
+      ]);
+
+      const payload: CloudClosingsPayload = {
+        daily_closings: closings,
+        cash_closings: cash,
+        stock_counts: stock,
+        revisions: revisions,
+        updated_at: new Date().toISOString(),
+      };
+
+      return await updateGistFiles({
+        [CLOSINGS_GIST_FILE]: payload,
+      });
+    } catch (err) {
+      console.error('[DailyClosingRepo] Failed to sync closings to cloud:', err);
+      return false;
+    }
+  },
+
+  debouncedSyncToCloud() {
+    if (closingSyncTimeout) clearTimeout(closingSyncTimeout);
+    closingSyncTimeout = setTimeout(() => {
+      this.syncClosingsToCloud().catch(e => console.warn('[DailyClosingRepo] Background sync failed:', e));
+    }, 2000);
+  },
+
+  async syncFromCloud(force = false): Promise<void> {
+    if (isClosingSyncing && !force) return;
+    isClosingSyncing = true;
+    try {
+      const [cloudData, localClosings, localCash] = await Promise.all([
+        this.fetchCloudClosings(),
+        db.daily_closings.toArray(),
+        db.cash_closings.toArray(),
+      ]);
+
+      if (cloudData) {
+        if (Array.isArray(cloudData.daily_closings)) {
+          for (const item of cloudData.daily_closings) {
+            await db.daily_closings.put(item);
+          }
+        }
+        if (Array.isArray(cloudData.cash_closings)) {
+          for (const item of cloudData.cash_closings) {
+            await db.cash_closings.put(item);
+          }
+        }
+        if (Array.isArray(cloudData.stock_counts)) {
+          for (const item of cloudData.stock_counts) {
+            await db.stock_counts.put(item);
+          }
+        }
+        if (Array.isArray(cloudData.revisions)) {
+          for (const item of cloudData.revisions) {
+            await db.record_revisions.put(item);
+          }
+        }
+
+        // Push local union if local has records missing in cloud
+        const cloudClosingIds = new Set((cloudData.daily_closings || []).map(c => c.id));
+        const hasExtra = localClosings.some(c => !cloudClosingIds.has(c.id));
+        if (hasExtra) {
+          await this.syncClosingsToCloud();
+        }
+      } else if (localClosings.length > 0 || localCash.length > 0) {
+        await this.syncClosingsToCloud();
+      }
+    } catch (err) {
+      console.error('[DailyClosingRepo] Sync from cloud failed:', err);
+    } finally {
+      isClosingSyncing = false;
+    }
+  },
+
   async getOrCreateDailyClosing(locationId: string, closingDate: string): Promise<DailyClosing> {
-    const existing = await db.daily_closings
+    let existing = await db.daily_closings
       .where('location_id')
       .equals(locationId)
       .and(dc => dc.closing_date === closingDate)
       .first();
+
+    if (!existing) {
+      await this.syncFromCloud();
+      existing = await db.daily_closings
+        .where('location_id')
+        .equals(locationId)
+        .and(dc => dc.closing_date === closingDate)
+        .first();
+    }
 
     if (existing) {
       return existing;
@@ -82,12 +200,17 @@ export const dailyClosingRepo = {
     };
 
     await db.daily_closings.put(newClosing);
+    this.debouncedSyncToCloud();
     return newClosing;
   },
 
   async calculateLiveStats(locationId: string, dateStr: string): Promise<DayClosingLiveStats> {
     // 1. Sales for date
-    const allSales = await db.sales.where('location_id').equals(locationId).toArray();
+    let allSales = await db.sales.where('location_id').equals(locationId).toArray();
+    if (allSales.length === 0) {
+      await salesRepo.syncFromCloud();
+      allSales = await db.sales.where('location_id').equals(locationId).toArray();
+    }
     const daySales = allSales.filter(s => s.created_at.startsWith(dateStr));
 
     let grossSales = 0;
@@ -212,11 +335,22 @@ export const dailyClosingRepo = {
   },
 
   async getCashClosing(locationId: string, closingDate: string): Promise<CashClosing | undefined> {
-    return await db.cash_closings
+    let record = await db.cash_closings
       .where('location_id')
       .equals(locationId)
       .and(c => c.closing_date === closingDate)
       .first();
+
+    if (!record) {
+      await this.syncFromCloud();
+      record = await db.cash_closings
+        .where('location_id')
+        .equals(locationId)
+        .and(c => c.closing_date === closingDate)
+        .first();
+    }
+
+    return record;
   },
 
   async saveCashClosing(data: Omit<CashClosing, 'id' | 'business_id' | 'created_at'>): Promise<CashClosing> {
@@ -235,15 +369,27 @@ export const dailyClosingRepo = {
     };
 
     await db.cash_closings.put(record);
+    this.debouncedSyncToCloud();
     return record;
   },
 
   async getStockCounts(locationId: string, closingDate: string): Promise<StockCount[]> {
-    return await db.stock_counts
+    let counts = await db.stock_counts
       .where('location_id')
       .equals(locationId)
       .filter(sc => sc.count_date === closingDate)
       .toArray();
+
+    if (counts.length === 0) {
+      await this.syncFromCloud();
+      counts = await db.stock_counts
+        .where('location_id')
+        .equals(locationId)
+        .filter(sc => sc.count_date === closingDate)
+        .toArray();
+    }
+
+    return counts;
   },
 
   async saveStockCount(item: Omit<StockCount, 'id' | 'business_id' | 'created_at'>): Promise<StockCount> {
@@ -260,6 +406,7 @@ export const dailyClosingRepo = {
     };
 
     await db.stock_counts.put(record);
+    this.debouncedSyncToCloud();
     return record;
   },
 
@@ -304,6 +451,7 @@ export const dailyClosingRepo = {
     }
 
     await db.daily_closings.update(dailyClosingId, updates);
+    this.debouncedSyncToCloud();
     return await db.daily_closings.get(dailyClosingId);
   },
 
@@ -332,6 +480,8 @@ export const dailyClosingRepo = {
       user_name: submittedBy,
       created_at: now,
     });
+
+    this.debouncedSyncToCloud();
 
     const updated = await db.daily_closings.get(dailyClosingId);
     return updated!;
@@ -401,6 +551,8 @@ export const dailyClosingRepo = {
       reason: reopenReason,
       created_at: now,
     });
+
+    this.debouncedSyncToCloud();
 
     const updated = await db.daily_closings.get(dailyClosingId);
     return updated!;
