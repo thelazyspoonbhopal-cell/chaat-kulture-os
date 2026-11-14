@@ -66,11 +66,24 @@ export const KitchenProduction: React.FC = () => {
   // Modals & Action State
   const [viewingBatchNumber, setViewingBatchNumber] = useState<string | null>(null);
   const [viewingBatchRecords, setViewingBatchRecords] = useState<ProductionRecord[]>([]);
-  const [editingBatch, setEditingBatch] = useState<ProductionRecord | null>(null);
-  const [editQty, setEditQty] = useState<string>('');
-  const [editNotes, setEditNotes] = useState<string>('');
-  const [voidingBatch, setVoidingBatch] = useState<ProductionRecord | null>(null);
-  const [voidReason, setVoidReason] = useState<string>('');
+
+  // Whole Batch Edit & Delete State
+  const [editingBatchGroup, setEditingBatchGroup] = useState<{
+    batchNumber: string;
+    chefName: string;
+    notes: string;
+    date: string;
+    records: { id: string; itemId: string; name: string; unit: string; qty: number; notes: string }[];
+  } | null>(null);
+
+  const [deletingBatchGroup, setDeletingBatchGroup] = useState<{
+    batchNumber: string;
+    records: ProductionRecord[];
+    reason: string;
+  } | null>(null);
+
+  const [isSavingBatchEdit, setIsSavingBatchEdit] = useState<boolean>(false);
+  const [isDeletingBatch, setIsDeletingBatch] = useState<boolean>(false);
 
   // Access validation: Base Kitchen access or Owner/Manager
   const canAccessKitchen =
@@ -354,6 +367,117 @@ export const KitchenProduction: React.FC = () => {
     } catch (err) {
       console.error(err);
       showToast('Error opening batch details', 'error');
+    }
+  };
+
+  const openEditBatchModal = (batch: {
+    batchNumber: string;
+    date: string;
+    notes: string;
+    createdBy: string;
+    records: ProductionRecord[];
+  }) => {
+    setEditingBatchGroup({
+      batchNumber: batch.batchNumber,
+      date: batch.date,
+      chefName: batch.createdBy,
+      notes: batch.notes,
+      records: batch.records.map(r => ({
+        id: r.id,
+        itemId: r.inventory_item_id,
+        name: r.item_name || r.inventory_item_id,
+        unit: r.unit,
+        qty: r.quantity_produced,
+        notes: r.notes || '',
+      })),
+    });
+  };
+
+  const openDeleteBatchModal = (batch: {
+    batchNumber: string;
+    records: ProductionRecord[];
+  }) => {
+    setDeletingBatchGroup({
+      batchNumber: batch.batchNumber,
+      records: batch.records,
+      reason: '',
+    });
+  };
+
+  const handleBatchItemQtyChange = (idx: number, delta: number) => {
+    if (!editingBatchGroup) return;
+    setEditingBatchGroup(prev => {
+      if (!prev) return null;
+      const copy = [...prev.records];
+      const newQty = Math.max(0.1, Math.round((copy[idx].qty + delta) * 10) / 10);
+      copy[idx] = { ...copy[idx], qty: newQty };
+      return { ...prev, records: copy };
+    });
+  };
+
+  const handleSaveBatchEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingBatchGroup) return;
+
+    setIsSavingBatchEdit(true);
+    try {
+      await productionRepo.updateBatch(
+        editingBatchGroup.batchNumber,
+        {
+          records: editingBatchGroup.records.map(r => ({
+            id: r.id,
+            quantity: r.qty,
+            notes: r.notes.trim() || undefined,
+          })),
+          notes: editingBatchGroup.notes.trim() || undefined,
+          chefName: editingBatchGroup.chefName.trim() || undefined,
+        },
+        currentUser?.full_name || currentRole
+      );
+
+      showToast(`Batch #${editingBatchGroup.batchNumber} updated & kitchen stock adjusted`, 'success');
+      setEditingBatchGroup(null);
+      if (viewingBatchNumber === editingBatchGroup.batchNumber) {
+        setViewingBatchNumber(null);
+        setViewingBatchRecords([]);
+      }
+      await loadData();
+    } catch (err: any) {
+      console.error(err);
+      showToast(err.message || 'Error updating batch', 'error');
+    } finally {
+      setIsSavingBatchEdit(false);
+    }
+  };
+
+  const handleConfirmDeleteBatch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!deletingBatchGroup) return;
+    if (!deletingBatchGroup.reason.trim()) {
+      showToast('Please state a mandatory reason for deleting this batch', 'warning');
+      return;
+    }
+
+    setIsDeletingBatch(true);
+    try {
+      await productionRepo.deleteBatch(
+        deletingBatchGroup.batchNumber,
+        deletingBatchGroup.reason.trim(),
+        currentUser?.full_name || currentRole
+      );
+
+      showToast(`Batch #${deletingBatchGroup.batchNumber} deleted & inventory reversed from Base Kitchen`, 'success');
+      setDeletingBatchGroup(null);
+      if (viewingBatchNumber === deletingBatchGroup.batchNumber) {
+        setViewingBatchNumber(null);
+        setViewingBatchRecords([]);
+      }
+      await loadData();
+    } catch (err: any) {
+      console.error(err);
+      showToast(err.message || 'Error deleting batch', 'error');
+    } finally {
+      setIsDeletingBatch(false);
     }
   };
 
@@ -848,15 +972,38 @@ export const KitchenProduction: React.FC = () => {
                       </span>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5">
                       <Button
                         variant="secondary"
                         size="sm"
                         onClick={() => handleOpenBatchDetails(batch.batchNumber)}
                         className="text-xs text-orange-400 border-orange-500/30 hover:bg-orange-500/10 flex items-center gap-1"
+                        title="View Production Ticket"
                       >
                         <Eye className="w-3.5 h-3.5" />
                         <span>View Slip</span>
+                      </Button>
+
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => openEditBatchModal(batch)}
+                        className="text-xs text-slate-300 hover:text-white hover:bg-slate-800 flex items-center gap-1"
+                        title="Edit Batch Quantities & Notes"
+                      >
+                        <Edit2 className="w-3.5 h-3.5 text-amber-400" />
+                        <span>Edit</span>
+                      </Button>
+
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => openDeleteBatchModal(batch)}
+                        className="text-xs text-rose-400 hover:text-rose-300 hover:bg-rose-950/40 flex items-center gap-1"
+                        title="Delete Batch & Reverse Inventory Additions"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Delete</span>
                       </Button>
                     </div>
                   </div>
@@ -974,16 +1121,50 @@ export const KitchenProduction: React.FC = () => {
               )}
             </div>
 
-            <div className="flex justify-between items-center pt-2">
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => window.print()}
-                className="flex items-center gap-1.5"
-              >
-                <Printer className="w-4 h-4" />
-                <span>Print Batch Slip</span>
-              </Button>
+            <div className="flex flex-wrap justify-between items-center gap-2 pt-2 border-t border-slate-800">
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => window.print()}
+                  className="flex items-center gap-1.5 text-xs"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  <span>Print Slip</span>
+                </Button>
+
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => {
+                    const currentBatch = groupedBatches.find(b => b.batchNumber === viewingBatchNumber);
+                    if (currentBatch) {
+                      openEditBatchModal(currentBatch);
+                    }
+                  }}
+                  className="flex items-center gap-1.5 text-xs text-amber-400 hover:text-white"
+                  title="Edit Batch Items & Quantities"
+                >
+                  <Edit2 className="w-3.5 h-3.5" />
+                  <span>Edit Batch</span>
+                </Button>
+
+                <Button
+                  variant="danger"
+                  size="sm"
+                  onClick={() => {
+                    const currentBatch = groupedBatches.find(b => b.batchNumber === viewingBatchNumber);
+                    if (currentBatch) {
+                      openDeleteBatchModal(currentBatch);
+                    }
+                  }}
+                  className="flex items-center gap-1.5 text-xs"
+                  title="Delete Batch & Reverse Inventory"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Delete Batch</span>
+                </Button>
+              </div>
 
               <Button
                 variant="primary"
@@ -1000,124 +1181,177 @@ export const KitchenProduction: React.FC = () => {
         )}
       </Modal>
 
-      {/* ===================== MODAL 2: EDIT BATCH (Super Admin / Manager) ===================== */}
+      {/* ===================== MODAL 2: EDIT FULL BATCH ===================== */}
       <Modal
-        isOpen={!!editingBatch}
-        onClose={() => setEditingBatch(null)}
+        isOpen={!!editingBatchGroup}
+        onClose={() => setEditingBatchGroup(null)}
         title="Edit Production Batch"
-        subtitle={`Batch #${editingBatch?.batch_number}`}
-        maxWidth="md"
+        subtitle={`Batch #${editingBatchGroup?.batchNumber} • Prepared at Base Kitchen`}
+        maxWidth="lg"
       >
-        <form
-          onSubmit={async e => {
-            e.preventDefault();
-            if (!editingBatch) return;
-            const newQtyNum = parseFloat(editQty);
-            if (isNaN(newQtyNum) || newQtyNum <= 0) {
-              showToast('Please enter a valid quantity produced', 'warning');
-              return;
-            }
-            try {
-              await productionRepo.updateProductionRecord(
-                editingBatch.id,
-                {
-                  quantity_produced: newQtyNum,
-                  notes: editNotes.trim(),
-                },
-                currentRole
-              );
-              showToast(
-                `Updated Batch #${editingBatch.batch_number}. Inventory balance adjusted.`,
-                'success'
-              );
-              setEditingBatch(null);
-              await loadData();
-            } catch (err: any) {
-              showToast(err.message || 'Error updating production record', 'error');
-            }
-          }}
-          className="space-y-4"
-        >
-          <div className="p-3 bg-slate-900 border border-slate-800 rounded-xl text-xs text-slate-300">
-            ℹ️ Correcting the batch quantity will automatically update the available stock in Base Kitchen by the difference and append an audit movement entry.
-          </div>
+        {editingBatchGroup && (
+          <form onSubmit={handleSaveBatchEdit} className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Input
+                label="Chef / Supervisor Name"
+                value={editingBatchGroup.chefName}
+                onChange={e =>
+                  setEditingBatchGroup({ ...editingBatchGroup, chefName: e.target.value })
+                }
+              />
+              <Input
+                label="Batch Run Notes"
+                placeholder="e.g. Extra rich gravy for Sunday special"
+                value={editingBatchGroup.notes}
+                onChange={e =>
+                  setEditingBatchGroup({ ...editingBatchGroup, notes: e.target.value })
+                }
+              />
+            </div>
 
-          <Input
-            label="Quantity Produced *"
-            type="number"
-            step="0.01"
-            value={editQty}
-            onChange={e => setEditQty(e.target.value)}
-            required
-          />
+            {/* Items in Batch */}
+            <div className="space-y-2">
+              <label className="block text-xs font-semibold text-slate-300">
+                Dishes & Yield Quantities in this Batch ({editingBatchGroup.records.length} items)
+              </label>
 
-          <Input
-            label="Chef / Batch Notes"
-            value={editNotes}
-            onChange={e => setEditNotes(e.target.value)}
-          />
+              <div className="bg-slate-950 border border-slate-800 rounded-xl divide-y divide-slate-850 max-h-72 overflow-y-auto p-2 space-y-2">
+                {editingBatchGroup.records.map((item, idx) => (
+                  <div key={item.id} className="pt-2 first:pt-0 space-y-1.5">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-bold text-white">{item.name}</span>
+                      <span className="font-mono text-[11px] text-slate-400">Unit: {item.unit}</span>
+                    </div>
 
-          <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
-            <Button variant="secondary" type="button" onClick={() => setEditingBatch(null)}>
-              Cancel
-            </Button>
-            <Button variant="primary" type="submit">
-              Save Changes
-            </Button>
-          </div>
-        </form>
+                    <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1 bg-slate-900 border border-slate-800 rounded-lg p-1">
+                        <button
+                          type="button"
+                          onClick={() => handleBatchItemQtyChange(idx, -1)}
+                          className="w-7 h-7 rounded bg-slate-800 hover:bg-slate-700 text-white font-bold flex items-center justify-center text-xs"
+                        >
+                          <Minus className="w-3 h-3" />
+                        </button>
+                        <input
+                          type="number"
+                          step="0.1"
+                          min="0.1"
+                          value={item.qty}
+                          onChange={e => {
+                            const val = parseFloat(e.target.value) || 0;
+                            const copy = [...editingBatchGroup.records];
+                            copy[idx] = { ...copy[idx], qty: val };
+                            setEditingBatchGroup({ ...editingBatchGroup, records: copy });
+                          }}
+                          className="w-20 bg-slate-950 border border-slate-700 rounded text-center font-mono font-bold text-white text-xs py-1 focus:outline-none focus:border-orange-500"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleBatchItemQtyChange(idx, 1)}
+                          className="w-7 h-7 rounded bg-slate-800 hover:bg-slate-700 text-white font-bold flex items-center justify-center text-xs"
+                        >
+                          <Plus className="w-3 h-3" />
+                        </button>
+                      </div>
+
+                      <Input
+                        placeholder="Item preparation notes"
+                        value={item.notes}
+                        onChange={e => {
+                          const copy = [...editingBatchGroup.records];
+                          copy[idx] = { ...copy[idx], notes: e.target.value };
+                          setEditingBatchGroup({ ...editingBatchGroup, records: copy });
+                        }}
+                        className="text-xs flex-1"
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="p-3 bg-slate-900 border border-slate-800 rounded-xl text-xs text-slate-300">
+              ℹ️ Correcting batch yields automatically calculates the difference (+ / -) and updates Base Kitchen inventory balances while recording an immutable movement entry.
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
+              <Button
+                variant="secondary"
+                type="button"
+                onClick={() => setEditingBatchGroup(null)}
+                disabled={isSavingBatchEdit}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                type="submit"
+                disabled={isSavingBatchEdit}
+                className="bg-orange-600 hover:bg-orange-500 font-bold"
+              >
+                {isSavingBatchEdit ? 'Saving...' : 'Save Batch Changes'}
+              </Button>
+            </div>
+          </form>
+        )}
       </Modal>
 
-      {/* ===================== MODAL 3: VOID BATCH (Super Admin Only) ===================== */}
+      {/* ===================== MODAL 3: DELETE & VOID FULL BATCH ===================== */}
       <Modal
-        isOpen={!!voidingBatch}
-        onClose={() => setVoidingBatch(null)}
-        title="Void & Reverse Production Batch"
-        subtitle={`Batch #${voidingBatch?.batch_number}`}
+        isOpen={!!deletingBatchGroup}
+        onClose={() => setDeletingBatchGroup(null)}
+        title="Delete & Void Production Batch"
+        subtitle={`Batch #${deletingBatchGroup?.batchNumber}`}
         maxWidth="md"
       >
-        <form
-          onSubmit={async e => {
-            e.preventDefault();
-            if (!voidingBatch || !voidReason.trim()) {
-              showToast('Please state a reason for voiding', 'warning');
-              return;
-            }
-            try {
-              await productionRepo.deleteProductionRecord(voidingBatch.id, voidReason.trim(), currentRole);
-              showToast(
-                `Voided Batch #${voidingBatch.batch_number}. Stock reversed from Base Kitchen.`,
-                'success'
-              );
-              setVoidingBatch(null);
-              await loadData();
-            } catch (err: any) {
-              showToast(err.message || 'Error voiding production record', 'error');
-            }
-          }}
-          className="space-y-4"
-        >
-          <div className="p-3 bg-rose-950/40 border border-rose-800/60 rounded-xl text-xs text-rose-300">
-            ⚠️ <strong>Yield Rollback:</strong> Deleting this batch will deduct {voidingBatch?.quantity_produced} {voidingBatch?.unit} of {voidingBatch?.item_name} from Base Kitchen stock and append an immutable reversal to the movement ledger.
-          </div>
+        {deletingBatchGroup && (
+          <form onSubmit={handleConfirmDeleteBatch} className="space-y-4">
+            <div className="p-3 bg-rose-950/40 border border-rose-800/60 rounded-xl text-xs text-rose-300 space-y-2">
+              <div className="font-bold flex items-center gap-1 text-sm">
+                <AlertTriangle className="w-4 h-4 shrink-0" />
+                <span>Yield Rollback Warning</span>
+              </div>
+              <p>
+                Deleting this batch will automatically deduct the following cooked items from Base Kitchen stock and append an immutable reversal to the movement ledger:
+              </p>
+              <ul className="list-disc list-inside space-y-0.5 font-mono text-[11px] pt-1">
+                {deletingBatchGroup.records.map(r => (
+                  <li key={r.id}>
+                    {r.item_name || r.inventory_item_id}: -{r.quantity_produced} {r.unit}
+                  </li>
+                ))}
+              </ul>
+            </div>
 
-          <Input
-            label="Mandatory Reason for Voiding *"
-            placeholder="e.g. Spoiled during cooking / Batch burned / Data entry mistake"
-            value={voidReason}
-            onChange={e => setVoidReason(e.target.value)}
-            required
-          />
+            <Input
+              label="Mandatory Reason for Deleting Batch *"
+              placeholder="e.g. Duplicate entry / Incorrect cooked quantity logged / Batch spoiled"
+              value={deletingBatchGroup.reason}
+              onChange={e =>
+                setDeletingBatchGroup({ ...deletingBatchGroup, reason: e.target.value })
+              }
+              required
+            />
 
-          <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
-            <Button variant="secondary" type="button" onClick={() => setVoidingBatch(null)}>
-              Cancel
-            </Button>
-            <Button variant="danger" type="submit">
-              Confirm Stock Reversal & Delete
-            </Button>
-          </div>
-        </form>
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
+              <Button
+                variant="secondary"
+                type="button"
+                onClick={() => setDeletingBatchGroup(null)}
+                disabled={isDeletingBatch}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                type="submit"
+                disabled={isDeletingBatch || !deletingBatchGroup.reason.trim()}
+              >
+                {isDeletingBatch ? 'Reversing...' : 'Confirm Stock Reversal & Delete'}
+              </Button>
+            </div>
+          </form>
+        )}
       </Modal>
     </div>
   );

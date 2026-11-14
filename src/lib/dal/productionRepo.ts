@@ -1,5 +1,16 @@
 import { db } from '../db';
 import type { ProductionRecord, InventoryMovement, InventoryBalance, InventoryItem } from '../../types';
+import { fetchGistFile, updateGistFiles } from '../sync/cloudRegistry';
+
+export const PRODUCTION_GIST_FILE = 'chaat_kulture_production.json';
+
+export interface CloudProductionPayload {
+  records: ProductionRecord[];
+  updated_at: string;
+}
+
+let isProdSyncing = false;
+let prodSyncTimeout: any = null;
 
 export interface BatchProductionItemInput {
   inventory_item_id: string;
@@ -215,6 +226,57 @@ export const DEFAULT_KITCHEN_PREPARED_ITEMS: Omit<InventoryItem, 'created_at'>[]
 ];
 
 export const productionRepo = {
+  // ---------------- CLOUD REGISTRY SYNC ----------------
+  async fetchCloudProduction(): Promise<CloudProductionPayload | null> {
+    try {
+      const data = await fetchGistFile<CloudProductionPayload>(PRODUCTION_GIST_FILE);
+      if (data && Array.isArray(data.records)) {
+        return data;
+      }
+    } catch (err) {
+      console.warn('[ProductionRepo] Failed to fetch cloud production:', err);
+    }
+    return null;
+  },
+
+  async syncProductionToCloud(): Promise<boolean> {
+    try {
+      const allRecords = await db.production_records.toArray();
+      const payload: CloudProductionPayload = {
+        records: allRecords,
+        updated_at: new Date().toISOString(),
+      };
+      return await updateGistFiles({
+        [PRODUCTION_GIST_FILE]: payload,
+      });
+    } catch (err) {
+      console.error('[ProductionRepo] Failed to sync production to cloud:', err);
+      return false;
+    }
+  },
+
+  debouncedSyncToCloud() {
+    if (prodSyncTimeout) clearTimeout(prodSyncTimeout);
+    prodSyncTimeout = setTimeout(() => {
+      this.syncProductionToCloud().catch(e => console.warn('[ProductionRepo] Background sync failed:', e));
+    }, 2000);
+  },
+
+  async syncFromCloud(force = false): Promise<void> {
+    if (isProdSyncing && !force) return;
+    isProdSyncing = true;
+    try {
+      const cloudData = await this.fetchCloudProduction();
+      if (cloudData && Array.isArray(cloudData.records) && cloudData.records.length > 0) {
+        for (const r of cloudData.records) await db.production_records.put(r);
+      }
+    } catch (err) {
+      console.error('[ProductionRepo] Sync from cloud failed:', err);
+    } finally {
+      isProdSyncing = false;
+    }
+  },
+
   /**
    * Seed standard kitchen production dishes if none exist
    */
@@ -261,6 +323,10 @@ export const productionRepo = {
 
   async getRecords(locationId?: string): Promise<ProductionRecord[]> {
     let list = await db.production_records.toArray();
+    if (list.length === 0) {
+      await this.syncFromCloud();
+      list = await db.production_records.toArray();
+    }
     if (locationId) {
       list = list.filter(r => r.location_id === locationId);
     }
@@ -382,6 +448,8 @@ export const productionRepo = {
         created_at: now,
       });
     });
+
+    this.debouncedSyncToCloud();
 
     return {
       batch_number: batchNumber,
@@ -556,5 +624,151 @@ export const productionRepo = {
         created_at: now,
       });
     });
+
+    this.debouncedSyncToCloud();
+  },
+
+  /**
+   * Delete an entire batch and reverse all inventory additions
+   */
+  async deleteBatch(batchNumber: string, reason: string, deletedBy?: string): Promise<void> {
+    const records = await db.production_records.where('batch_number').equals(batchNumber).toArray();
+    if (records.length === 0) throw new Error(`Batch #${batchNumber} not found`);
+
+    const now = new Date().toISOString();
+
+    await db.transaction('rw', [db.production_records, db.inventory_balances, db.inventory_movements, db.audit_logs], async () => {
+      for (const rec of records) {
+        const balanceKey = `bal_${rec.location_id}_${rec.inventory_item_id}`;
+        const bal = await db.inventory_balances.get(balanceKey);
+        const currentBalQty = bal ? bal.available_quantity : 0;
+        const newBalQty = currentBalQty - rec.quantity_produced;
+
+        await db.inventory_balances.put({
+          id: balanceKey,
+          business_id: rec.business_id,
+          location_id: rec.location_id,
+          inventory_item_id: rec.inventory_item_id,
+          available_quantity: newBalQty,
+          in_transit_quantity: bal ? bal.in_transit_quantity : 0,
+          last_updated: now,
+          last_updated_by: deletedBy,
+        });
+
+        const clientTxId = 'tx_del_b_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
+        await db.inventory_movements.put({
+          id: 'mov_rev_' + Date.now() + Math.random().toString(36).substr(2, 3),
+          client_tx_id: clientTxId,
+          business_id: rec.business_id,
+          location_id: rec.location_id,
+          inventory_item_id: rec.inventory_item_id,
+          movement_type: 'production_output',
+          quantity_change: -rec.quantity_produced,
+          balance_after: newBalQty,
+          unit: rec.unit,
+          batch_reference: rec.batch_number,
+          notes: `BATCH VOID: Reversal of Batch #${batchNumber}. Reason: ${reason}`,
+          reference_id: rec.id,
+          created_by: deletedBy,
+          created_at: now,
+        });
+
+        await db.production_records.delete(rec.id);
+      }
+
+      await db.audit_logs.put({
+        id: 'audit_' + Date.now(),
+        business_id: records[0].business_id,
+        action: 'DELETE_PRODUCTION_BATCH',
+        entity: 'production_records',
+        entity_id: batchNumber,
+        location_id: records[0].location_id,
+        new_data: { batch_number: batchNumber, items_count: records.length, reason, deletedBy },
+        created_at: now,
+      });
+    });
+
+    this.debouncedSyncToCloud();
+  },
+
+  /**
+   * Update an entire batch (quantities of items, notes, chef)
+   */
+  async updateBatch(
+    batchNumber: string,
+    updates: {
+      records: { id: string; quantity: number; notes?: string }[];
+      notes?: string;
+      chefName?: string;
+    },
+    updatedBy?: string
+  ): Promise<void> {
+    const existingRecords = await db.production_records.where('batch_number').equals(batchNumber).toArray();
+    if (existingRecords.length === 0) throw new Error(`Batch #${batchNumber} not found`);
+
+    const now = new Date().toISOString();
+
+    await db.transaction('rw', [db.production_records, db.inventory_balances, db.inventory_movements, db.audit_logs], async () => {
+      for (const itemUpdate of updates.records) {
+        const rec = existingRecords.find(r => r.id === itemUpdate.id);
+        if (!rec) continue;
+
+        if (itemUpdate.quantity !== rec.quantity_produced) {
+          const delta = itemUpdate.quantity - rec.quantity_produced;
+          const balanceKey = `bal_${rec.location_id}_${rec.inventory_item_id}`;
+          const bal = await db.inventory_balances.get(balanceKey);
+          const currentBalQty = bal ? bal.available_quantity : 0;
+          const adjustedBalQty = currentBalQty + delta;
+
+          await db.inventory_balances.put({
+            id: balanceKey,
+            business_id: rec.business_id,
+            location_id: rec.location_id,
+            inventory_item_id: rec.inventory_item_id,
+            available_quantity: adjustedBalQty,
+            in_transit_quantity: bal ? bal.in_transit_quantity : 0,
+            last_updated: now,
+            last_updated_by: updatedBy,
+          });
+
+          const clientTxId = 'tx_upd_b_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
+          await db.inventory_movements.put({
+            id: 'mov_adj_' + Date.now() + Math.random().toString(36).substr(2, 3),
+            client_tx_id: clientTxId,
+            business_id: rec.business_id,
+            location_id: rec.location_id,
+            inventory_item_id: rec.inventory_item_id,
+            movement_type: 'production_output',
+            quantity_change: delta,
+            balance_after: adjustedBalQty,
+            unit: rec.unit,
+            batch_reference: rec.batch_number,
+            notes: `BATCH ADJUSTMENT: Yield corrected from ${rec.quantity_produced} to ${itemUpdate.quantity} ${rec.unit}`,
+            reference_id: rec.id,
+            created_by: updatedBy,
+            created_at: now,
+          });
+        }
+
+        await db.production_records.update(rec.id, {
+          quantity_produced: itemUpdate.quantity,
+          notes: itemUpdate.notes !== undefined ? itemUpdate.notes : updates.notes || rec.notes,
+          created_by: updates.chefName || rec.created_by,
+        });
+      }
+
+      await db.audit_logs.put({
+        id: 'audit_' + Date.now(),
+        business_id: existingRecords[0].business_id,
+        action: 'UPDATE_PRODUCTION_BATCH',
+        entity: 'production_records',
+        entity_id: batchNumber,
+        location_id: existingRecords[0].location_id,
+        new_data: { batch_number: batchNumber, updates, updatedBy },
+        created_at: now,
+      });
+    });
+
+    this.debouncedSyncToCloud();
   },
 };
