@@ -124,6 +124,10 @@ export class ChaatKultureDexieDB extends Dexie {
     this.version(5).stores({
       supplier_payments: 'id, purchase_id, supplier_id, payment_date, is_demo',
     });
+
+    this.version(6).stores({
+      production_records: 'id, client_tx_id, batch_number, location_id, inventory_item_id, production_date, is_demo',
+    });
   }
 }
 

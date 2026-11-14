@@ -337,7 +337,8 @@ export const productionRepo = {
    * Get all records sharing a specific batch number (for multi-item batch details)
    */
   async getRecordsByBatchNumber(batchNumber: string): Promise<ProductionRecord[]> {
-    return await db.production_records.where('batch_number').equals(batchNumber).toArray();
+    const all = await db.production_records.toArray();
+    return all.filter(r => r.batch_number === batchNumber);
   },
 
   /**
@@ -632,7 +633,8 @@ export const productionRepo = {
    * Delete an entire batch and reverse all inventory additions
    */
   async deleteBatch(batchNumber: string, reason: string, deletedBy?: string): Promise<void> {
-    const records = await db.production_records.where('batch_number').equals(batchNumber).toArray();
+    const all = await db.production_records.toArray();
+    const records = all.filter(r => r.batch_number === batchNumber);
     if (records.length === 0) throw new Error(`Batch #${batchNumber} not found`);
 
     const now = new Date().toISOString();
@@ -703,7 +705,8 @@ export const productionRepo = {
     },
     updatedBy?: string
   ): Promise<void> {
-    const existingRecords = await db.production_records.where('batch_number').equals(batchNumber).toArray();
+    const all = await db.production_records.toArray();
+    const existingRecords = all.filter(r => r.batch_number === batchNumber);
     if (existingRecords.length === 0) throw new Error(`Batch #${batchNumber} not found`);
 
     const now = new Date().toISOString();
