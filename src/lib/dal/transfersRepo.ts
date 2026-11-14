@@ -14,11 +14,13 @@ export const TRANSFERS_GIST_FILE = 'chaat_kulture_transfers.json';
 export interface CloudTransfersPayload {
   stock_requests: StockRequest[];
   dispatches: Dispatch[];
+  deleted_ids?: string[];
   updated_at: string;
 }
 
 let isTransfersSyncing = false;
 let transfersSyncTimeout: any = null;
+const deletedTransfersIds = new Set<string>();
 
 export const transfersRepo = {
   // Cloud Registry Sync
@@ -34,16 +36,21 @@ export const transfersRepo = {
     return null;
   },
 
-  async syncTransfersToCloud(): Promise<boolean> {
+  async syncTransfersToCloud(extraDeletedIds?: string[]): Promise<boolean> {
     try {
+      if (extraDeletedIds && extraDeletedIds.length > 0) {
+        extraDeletedIds.forEach(id => deletedTransfersIds.add(id));
+      }
+
       const [reqs, dsps] = await Promise.all([
         db.stock_requests.toArray(),
         db.dispatches.toArray(),
       ]);
 
       const payload: CloudTransfersPayload = {
-        stock_requests: reqs,
-        dispatches: dsps,
+        stock_requests: reqs.filter(r => !deletedTransfersIds.has(r.id)),
+        dispatches: dsps.filter(d => !deletedTransfersIds.has(d.id)),
+        deleted_ids: Array.from(deletedTransfersIds),
         updated_at: new Date().toISOString(),
       };
 
@@ -69,11 +76,31 @@ export const transfersRepo = {
     try {
       const cloudData = await this.fetchCloudTransfers();
       if (cloudData) {
-        if (Array.isArray(cloudData.stock_requests) && cloudData.stock_requests.length > 0) {
-          for (const r of cloudData.stock_requests) await db.stock_requests.put(r);
+        // 1. Process tombstones / deleted IDs first so deleted records never come back
+        if (Array.isArray(cloudData.deleted_ids)) {
+          cloudData.deleted_ids.forEach(id => deletedTransfersIds.add(id));
+          for (const delId of cloudData.deleted_ids) {
+            await db.dispatches.delete(delId);
+            await db.stock_requests.delete(delId);
+          }
         }
-        if (Array.isArray(cloudData.dispatches) && cloudData.dispatches.length > 0) {
-          for (const d of cloudData.dispatches) await db.dispatches.put(d);
+
+        // 2. Put requests that aren't marked deleted
+        if (Array.isArray(cloudData.stock_requests)) {
+          for (const r of cloudData.stock_requests) {
+            if (!deletedTransfersIds.has(r.id)) {
+              await db.stock_requests.put(r);
+            }
+          }
+        }
+
+        // 3. Put dispatches that aren't marked deleted
+        if (Array.isArray(cloudData.dispatches)) {
+          for (const d of cloudData.dispatches) {
+            if (!deletedTransfersIds.has(d.id)) {
+              await db.dispatches.put(d);
+            }
+          }
         }
       }
     } catch (err) {
@@ -538,6 +565,7 @@ export const transfersRepo = {
 
     const now = new Date().toISOString();
     await db.stock_requests.delete(id);
+    deletedTransfersIds.add(id);
     await db.audit_logs.put({
       id: 'audit_' + Date.now(),
       business_id: existing.business_id,
@@ -548,7 +576,7 @@ export const transfersRepo = {
       new_data: { request_number: existing.request_number, reason, deletedBy },
       created_at: now,
     });
-    this.debouncedSyncToCloud();
+    await this.syncTransfersToCloud([id]);
   },
 
   async updateDispatchStatus(
@@ -670,67 +698,119 @@ export const transfersRepo = {
   async voidDispatch(dispatchId: string, reason: string, cancelledBy?: string): Promise<Dispatch> {
     const dispatch = await db.dispatches.get(dispatchId);
     if (!dispatch) throw new Error('Dispatch not found');
-    if (dispatch.status !== 'in_transit' && dispatch.status !== 'sent') {
-      throw new Error(`Cannot void dispatch with status '${dispatch.status}'. Only in-transit or sent dispatches can be voided.`);
-    }
 
     const now = new Date().toISOString();
     const clientTxId = 'tx_void_dsp_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
 
     await db.transaction('rw', [db.dispatches, db.stock_requests, db.inventory_balances, db.inventory_movements, db.audit_logs], async () => {
-      // 1. For each item in transit, restore to source available balance and clear from destination in_transit
-      for (const item of dispatch.items || []) {
-        // Restore source available balance
-        const sourceBalKey = `bal_${dispatch.from_location_id}_${item.inventory_item_id}`;
-        const sourceBal = await db.inventory_balances.get(sourceBalKey);
-        const currentSourceQty = sourceBal ? sourceBal.available_quantity : 0;
-        const newSourceQty = currentSourceQty + item.dispatched_quantity;
+      // 1. Stock reversal
+      if (dispatch.status === 'in_transit' || dispatch.status === 'sent') {
+        for (const item of dispatch.items || []) {
+          // Restore source available balance
+          const sourceBalKey = `bal_${dispatch.from_location_id}_${item.inventory_item_id}`;
+          const sourceBal = await db.inventory_balances.get(sourceBalKey);
+          const currentSourceQty = sourceBal ? sourceBal.available_quantity : 0;
+          const newSourceQty = currentSourceQty + item.dispatched_quantity;
 
-        await db.inventory_balances.put({
-          id: sourceBalKey,
-          business_id: dispatch.business_id,
-          location_id: dispatch.from_location_id,
-          inventory_item_id: item.inventory_item_id,
-          available_quantity: newSourceQty,
-          in_transit_quantity: sourceBal ? sourceBal.in_transit_quantity : 0,
-          last_updated: now,
-          last_updated_by: cancelledBy,
-        });
+          await db.inventory_balances.put({
+            id: sourceBalKey,
+            business_id: dispatch.business_id,
+            location_id: dispatch.from_location_id,
+            inventory_item_id: item.inventory_item_id,
+            available_quantity: newSourceQty,
+            in_transit_quantity: sourceBal ? sourceBal.in_transit_quantity : 0,
+            last_updated: now,
+            last_updated_by: cancelledBy,
+          });
 
-        // Deduct from destination in-transit balance
-        const destBalKey = `bal_${dispatch.to_location_id}_${item.inventory_item_id}`;
-        const destBal = await db.inventory_balances.get(destBalKey);
-        const currentDestTransit = destBal ? destBal.in_transit_quantity : item.dispatched_quantity;
-        const newDestTransit = Math.max(0, currentDestTransit - item.dispatched_quantity);
+          // Deduct from destination in-transit balance
+          const destBalKey = `bal_${dispatch.to_location_id}_${item.inventory_item_id}`;
+          const destBal = await db.inventory_balances.get(destBalKey);
+          const currentDestTransit = destBal ? destBal.in_transit_quantity : item.dispatched_quantity;
+          const newDestTransit = Math.max(0, currentDestTransit - item.dispatched_quantity);
 
-        await db.inventory_balances.put({
-          id: destBalKey,
-          business_id: dispatch.business_id,
-          location_id: dispatch.to_location_id,
-          inventory_item_id: item.inventory_item_id,
-          available_quantity: destBal ? destBal.available_quantity : 0,
-          in_transit_quantity: newDestTransit,
-          last_updated: now,
-          last_updated_by: cancelledBy,
-        });
+          await db.inventory_balances.put({
+            id: destBalKey,
+            business_id: dispatch.business_id,
+            location_id: dispatch.to_location_id,
+            inventory_item_id: item.inventory_item_id,
+            available_quantity: destBal ? destBal.available_quantity : 0,
+            in_transit_quantity: newDestTransit,
+            last_updated: now,
+            last_updated_by: cancelledBy,
+          });
 
-        // Append movement ledger reversal
-        await db.inventory_movements.put({
-          id: 'mov_void_' + Date.now() + Math.random().toString(36).substr(2, 3),
-          client_tx_id: clientTxId,
-          business_id: dispatch.business_id,
-          location_id: dispatch.from_location_id,
-          inventory_item_id: item.inventory_item_id,
-          movement_type: 'transfer_reversal',
-          quantity_change: item.dispatched_quantity,
-          balance_after: newSourceQty,
-          unit: item.unit,
-          batch_reference: dispatch.challan_number,
-          notes: `VOID REVERSAL: Cancelled Challan #${dispatch.challan_number}. Reason: ${reason}`,
-          reference_id: dispatch.id,
-          created_by: cancelledBy,
-          created_at: now,
-        });
+          // Append movement ledger reversal
+          await db.inventory_movements.put({
+            id: 'mov_void_' + Date.now() + Math.random().toString(36).substr(2, 3),
+            client_tx_id: clientTxId,
+            business_id: dispatch.business_id,
+            location_id: dispatch.from_location_id,
+            inventory_item_id: item.inventory_item_id,
+            movement_type: 'transfer_reversal',
+            quantity_change: item.dispatched_quantity,
+            balance_after: newSourceQty,
+            unit: item.unit,
+            batch_reference: dispatch.challan_number,
+            notes: `VOID REVERSAL: Cancelled Challan #${dispatch.challan_number}. Reason: ${reason}`,
+            reference_id: dispatch.id,
+            created_by: cancelledBy,
+            created_at: now,
+          });
+        }
+      } else if (dispatch.status === 'received' || dispatch.status === 'partially_received' || dispatch.status === 'delivered') {
+        for (const item of dispatch.items || []) {
+          const qtyToRollback = item.received_quantity || item.dispatched_quantity;
+
+          const destBalKey = `bal_${dispatch.to_location_id}_${item.inventory_item_id}`;
+          const destBal = await db.inventory_balances.get(destBalKey);
+          const currentDestAvail = destBal ? destBal.available_quantity : 0;
+          const newDestAvail = Math.max(0, currentDestAvail - qtyToRollback);
+
+          await db.inventory_balances.put({
+            id: destBalKey,
+            business_id: dispatch.business_id,
+            location_id: dispatch.to_location_id,
+            inventory_item_id: item.inventory_item_id,
+            available_quantity: newDestAvail,
+            in_transit_quantity: destBal ? destBal.in_transit_quantity : 0,
+            last_updated: now,
+            last_updated_by: cancelledBy,
+          });
+
+          const sourceBalKey = `bal_${dispatch.from_location_id}_${item.inventory_item_id}`;
+          const sourceBal = await db.inventory_balances.get(sourceBalKey);
+          const currentSourceQty = sourceBal ? sourceBal.available_quantity : 0;
+          const newSourceQty = currentSourceQty + item.dispatched_quantity;
+
+          await db.inventory_balances.put({
+            id: sourceBalKey,
+            business_id: dispatch.business_id,
+            location_id: dispatch.from_location_id,
+            inventory_item_id: item.inventory_item_id,
+            available_quantity: newSourceQty,
+            in_transit_quantity: sourceBal ? sourceBal.in_transit_quantity : 0,
+            last_updated: now,
+            last_updated_by: cancelledBy,
+          });
+
+          await db.inventory_movements.put({
+            id: 'mov_void_rec_' + Date.now() + Math.random().toString(36).substr(2, 3),
+            client_tx_id: clientTxId,
+            business_id: dispatch.business_id,
+            location_id: dispatch.from_location_id,
+            inventory_item_id: item.inventory_item_id,
+            movement_type: 'transfer_reversal',
+            quantity_change: item.dispatched_quantity,
+            balance_after: newSourceQty,
+            unit: item.unit,
+            batch_reference: dispatch.challan_number,
+            notes: `VOID REVERSAL: Cancelled Received Challan #${dispatch.challan_number}. Reason: ${reason}`,
+            reference_id: dispatch.id,
+            created_by: cancelledBy,
+            created_at: now,
+          });
+        }
       }
 
       // 2. Revert linked stock request if exists
@@ -765,7 +845,7 @@ export const transfersRepo = {
     });
 
     const refreshed = await db.dispatches.get(dispatchId);
-    this.debouncedSyncToCloud();
+    await this.syncTransfersToCloud();
     return refreshed!;
   },
 
@@ -780,6 +860,7 @@ export const transfersRepo = {
 
     const now = new Date().toISOString();
     await db.dispatches.delete(dispatchId);
+    deletedTransfersIds.add(dispatchId);
     await db.audit_logs.put({
       id: 'audit_' + Date.now(),
       business_id: dispatch.business_id,
@@ -790,7 +871,7 @@ export const transfersRepo = {
       new_data: { challan_number: dispatch.challan_number, reason, deletedBy },
       created_at: now,
     });
-    this.debouncedSyncToCloud();
+    await this.syncTransfersToCloud([dispatchId]);
   },
 
   /**
@@ -916,10 +997,12 @@ export const transfersRepo = {
 
       // 2. Erase the delivery challan
       await db.dispatches.delete(dispatchId);
+      deletedTransfersIds.add(dispatchId);
 
       // 3. Erase the linked stock request (indent)
       if (dispatch.stock_request_id) {
         await db.stock_requests.delete(dispatch.stock_request_id);
+        deletedTransfersIds.add(dispatch.stock_request_id);
       }
 
       // 4. Audit
@@ -940,6 +1023,6 @@ export const transfersRepo = {
       });
     });
 
-    this.debouncedSyncToCloud();
+    await this.syncTransfersToCloud([dispatchId, ...(dispatch.stock_request_id ? [dispatch.stock_request_id] : [])]);
   },
 };
