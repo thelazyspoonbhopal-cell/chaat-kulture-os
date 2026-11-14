@@ -511,7 +511,15 @@ export const productionRepo = {
         const balanceKey = `bal_${existing.location_id}_${existing.inventory_item_id}`;
         const bal = await db.inventory_balances.get(balanceKey);
         const currentBalQty = bal ? bal.available_quantity : 0;
-        const adjustedBalQty = currentBalQty + delta;
+
+        // Negative stock protection
+        if (delta < 0 && currentBalQty + delta < 0) {
+          throw new Error(
+            `Cannot reduce batch yield for "${existing.item_name || existing.inventory_item_id}": Available stock is only ${currentBalQty} ${existing.unit}, so it cannot be reduced by ${Math.abs(delta)} ${existing.unit}. Some stock has already been dispatched or used.`
+          );
+        }
+
+        const adjustedBalQty = Math.max(0, currentBalQty + delta);
 
         await db.inventory_balances.put({
           id: balanceKey,
@@ -575,11 +583,18 @@ export const productionRepo = {
     const clientTxId = 'tx_del_prod_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
 
     await db.transaction('rw', [db.production_records, db.inventory_balances, db.inventory_movements, db.audit_logs], async () => {
-      // 1. Deduct produced quantity from location balance
+      // 1. Deduct produced quantity from location balance with negative stock protection
       const balanceKey = `bal_${existing.location_id}_${existing.inventory_item_id}`;
       const bal = await db.inventory_balances.get(balanceKey);
       const currentBalQty = bal ? bal.available_quantity : 0;
-      const newBalQty = currentBalQty - existing.quantity_produced;
+
+      if (currentBalQty < existing.quantity_produced) {
+        throw new Error(
+          `Cannot delete batch: "${existing.item_name || existing.inventory_item_id}" only has ${currentBalQty} ${existing.unit} available in stock, but this batch produced ${existing.quantity_produced} ${existing.unit}. Stock has already been dispatched or consumed. Deletion blocked to prevent negative inventory.`
+        );
+      }
+
+      const newBalQty = Math.max(0, currentBalQty - existing.quantity_produced);
 
       await db.inventory_balances.put({
         id: balanceKey,
@@ -630,12 +645,24 @@ export const productionRepo = {
   },
 
   /**
-   * Delete an entire batch and reverse all inventory additions
+   * Delete an entire batch and reverse all inventory additions with negative stock protection
    */
   async deleteBatch(batchNumber: string, reason: string, deletedBy?: string): Promise<void> {
     const all = await db.production_records.toArray();
     const records = all.filter(r => r.batch_number === batchNumber);
     if (records.length === 0) throw new Error(`Batch #${batchNumber} not found`);
+
+    // Pre-flight check: ensure available stock >= batch yield for every item to prevent negative stock
+    for (const rec of records) {
+      const balanceKey = `bal_${rec.location_id}_${rec.inventory_item_id}`;
+      const bal = await db.inventory_balances.get(balanceKey);
+      const currentBalQty = bal ? bal.available_quantity : 0;
+      if (currentBalQty < rec.quantity_produced) {
+        throw new Error(
+          `Cannot delete Batch #${batchNumber}: "${rec.item_name || rec.inventory_item_id}" only has ${currentBalQty} ${rec.unit} available in stock, but this batch produced ${rec.quantity_produced} ${rec.unit}. Items have already been dispatched or consumed. Deletion is blocked to prevent negative inventory.`
+        );
+      }
+    }
 
     const now = new Date().toISOString();
 
@@ -644,7 +671,7 @@ export const productionRepo = {
         const balanceKey = `bal_${rec.location_id}_${rec.inventory_item_id}`;
         const bal = await db.inventory_balances.get(balanceKey);
         const currentBalQty = bal ? bal.available_quantity : 0;
-        const newBalQty = currentBalQty - rec.quantity_produced;
+        const newBalQty = Math.max(0, currentBalQty - rec.quantity_produced);
 
         await db.inventory_balances.put({
           id: balanceKey,
@@ -694,7 +721,7 @@ export const productionRepo = {
   },
 
   /**
-   * Update an entire batch (quantities of items, notes, chef)
+   * Update an entire batch (quantities of items, notes, chef) with negative stock protection
    */
   async updateBatch(
     batchNumber: string,
@@ -721,7 +748,14 @@ export const productionRepo = {
           const balanceKey = `bal_${rec.location_id}_${rec.inventory_item_id}`;
           const bal = await db.inventory_balances.get(balanceKey);
           const currentBalQty = bal ? bal.available_quantity : 0;
-          const adjustedBalQty = currentBalQty + delta;
+
+          if (delta < 0 && currentBalQty + delta < 0) {
+            throw new Error(
+              `Cannot reduce batch yield for "${rec.item_name || rec.inventory_item_id}": Available stock is only ${currentBalQty} ${rec.unit}, so it cannot be reduced by ${Math.abs(delta)} ${rec.unit}. Stock has already been dispatched.`
+            );
+          }
+
+          const adjustedBalQty = Math.max(0, currentBalQty + delta);
 
           await db.inventory_balances.put({
             id: balanceKey,

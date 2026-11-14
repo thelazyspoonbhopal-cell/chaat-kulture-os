@@ -464,7 +464,18 @@ export const purchasesRepo = {
               const balKey = `bal_${existing.receiving_location_id}_${itemId}`;
               const existingBal = await db.inventory_balances.get(balKey);
               const currentQty = existingBal ? existingBal.available_quantity : 0;
-              const newAvail = currentQty + qtyDiff;
+
+              // Negative stock protection
+              if (qtyDiff < 0 && currentQty + qtyDiff < 0) {
+                const itemInfo =
+                  updates.items?.find(i => i.inventory_item_id === itemId) ||
+                  existing.items?.find(i => i.inventory_item_id === itemId);
+                throw new Error(
+                  `Cannot reduce purchased quantity: Only ${currentQty} ${itemInfo?.unit || 'unit'} available in stock. Reducing by ${Math.abs(qtyDiff)} would cause negative inventory.`
+                );
+              }
+
+              const newAvail = Math.max(0, currentQty + qtyDiff);
 
               await db.inventory_balances.put({
                 id: balKey,
@@ -572,6 +583,18 @@ export const purchasesRepo = {
     const purchase = await db.purchases.get(id);
     if (!purchase) throw new Error('Purchase invoice not found');
 
+    // Pre-flight check: ensure current balance >= purchase quantity for each item
+    for (const item of purchase.items || []) {
+      const balKey = `bal_${purchase.receiving_location_id}_${item.inventory_item_id}`;
+      const existingBal = await db.inventory_balances.get(balKey);
+      const currentQty = existingBal ? existingBal.available_quantity : 0;
+      if (currentQty < item.quantity) {
+        throw new Error(
+          `Cannot delete Purchase Invoice #${purchase.invoice_number}: "${item.item_name || item.inventory_item_id}" only has ${currentQty} ${item.unit} available in stock, but this invoice inwarded ${item.quantity} ${item.unit}. Stock has already been used or transferred. Deletion is blocked to prevent negative stock.`
+        );
+      }
+    }
+
     const now = new Date().toISOString();
     const clientTxId = 'tx_del_pur_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
 
@@ -586,12 +609,12 @@ export const purchasesRepo = {
         db.audit_logs,
       ],
       async () => {
-        // 1. Deduct inwarded quantities from receiving location balance
+        // 1. Deduct inwarded quantities from receiving location balance with negative stock protection
         for (const item of purchase.items || []) {
           const balKey = `bal_${purchase.receiving_location_id}_${item.inventory_item_id}`;
           const existingBal = await db.inventory_balances.get(balKey);
           const currentQty = existingBal ? existingBal.available_quantity : 0;
-          const newQty = currentQty - item.quantity;
+          const newQty = Math.max(0, currentQty - item.quantity);
 
           await db.inventory_balances.put({
             id: balKey,

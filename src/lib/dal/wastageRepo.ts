@@ -50,7 +50,7 @@ export const wastageRepo = {
       const balanceKey = `bal_${data.location_id}_${data.inventory_item_id}`;
       const existing = await db.inventory_balances.get(balanceKey);
       const currentQty = existing ? existing.available_quantity : 0;
-      const newQty = currentQty - data.quantity;
+      const newQty = Math.max(0, currentQty - data.quantity);
 
       await db.inventory_balances.put({
         id: balanceKey,
@@ -123,7 +123,7 @@ export const wastageRepo = {
         const balanceKey = `bal_${existing.location_id}_${existing.inventory_item_id}`;
         const bal = await db.inventory_balances.get(balanceKey);
         const currentBalQty = bal ? bal.available_quantity : 0;
-        const adjustedBalQty = currentBalQty - delta;
+        const adjustedBalQty = Math.max(0, currentBalQty - delta);
 
         await db.inventory_balances.put({
           id: balanceKey,

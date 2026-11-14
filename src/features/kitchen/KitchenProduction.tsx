@@ -1304,54 +1304,81 @@ export const KitchenProduction: React.FC = () => {
         subtitle={`Batch #${deletingBatchGroup?.batchNumber}`}
         maxWidth="md"
       >
-        {deletingBatchGroup && (
-          <form onSubmit={handleConfirmDeleteBatch} className="space-y-4">
-            <div className="p-3 bg-rose-950/40 border border-rose-800/60 rounded-xl text-xs text-rose-300 space-y-2">
-              <div className="font-bold flex items-center gap-1 text-sm">
-                <AlertTriangle className="w-4 h-4 shrink-0" />
-                <span>Yield Rollback Warning</span>
+        {deletingBatchGroup && (() => {
+          const hasInsufficientStock = deletingBatchGroup.records.some(r => {
+            const stock = stockMap.get(r.inventory_item_id) || 0;
+            return stock < r.quantity_produced;
+          });
+
+          return (
+            <form onSubmit={handleConfirmDeleteBatch} className="space-y-4">
+              <div className="p-3 bg-rose-950/40 border border-rose-800/60 rounded-xl text-xs text-rose-300 space-y-2">
+                <div className="font-bold flex items-center gap-1 text-sm">
+                  <AlertTriangle className="w-4 h-4 shrink-0" />
+                  <span>Yield Rollback Warning</span>
+                </div>
+                <p>
+                  Deleting this batch will automatically deduct the following cooked items from Base Kitchen stock and append an immutable reversal to the movement ledger:
+                </p>
+                <ul className="space-y-1 font-mono text-[11px] pt-1">
+                  {deletingBatchGroup.records.map(r => {
+                    const current = stockMap.get(r.inventory_item_id) || 0;
+                    const isShort = current < r.quantity_produced;
+                    return (
+                      <li key={r.id} className="flex items-center justify-between">
+                        <span>{r.item_name || r.inventory_item_id}: -{r.quantity_produced} {r.unit}</span>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${isShort ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' : 'bg-slate-800 text-slate-400'}`}>
+                          In Stock: {current} {r.unit} {isShort && '⚠️ Short'}
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
               </div>
-              <p>
-                Deleting this batch will automatically deduct the following cooked items from Base Kitchen stock and append an immutable reversal to the movement ledger:
-              </p>
-              <ul className="list-disc list-inside space-y-0.5 font-mono text-[11px] pt-1">
-                {deletingBatchGroup.records.map(r => (
-                  <li key={r.id}>
-                    {r.item_name || r.inventory_item_id}: -{r.quantity_produced} {r.unit}
-                  </li>
-                ))}
-              </ul>
-            </div>
 
-            <Input
-              label="Mandatory Reason for Deleting Batch *"
-              placeholder="e.g. Duplicate entry / Incorrect cooked quantity logged / Batch spoiled"
-              value={deletingBatchGroup.reason}
-              onChange={e =>
-                setDeletingBatchGroup({ ...deletingBatchGroup, reason: e.target.value })
-              }
-              required
-            />
+              {hasInsufficientStock && (
+                <div className="p-3 bg-amber-950/40 border border-amber-800/60 rounded-xl text-xs text-amber-300 space-y-1">
+                  <div className="font-bold flex items-center gap-1.5 text-sm text-amber-200">
+                    <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                    <span>Negative Stock Protection Active</span>
+                  </div>
+                  <p>
+                    One or more items in this batch have already been dispatched to outlets or consumed. Available stock is less than the batch yield. Deletion is blocked to prevent negative inventory balances.
+                  </p>
+                </div>
+              )}
 
-            <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
-              <Button
-                variant="secondary"
-                type="button"
-                onClick={() => setDeletingBatchGroup(null)}
-                disabled={isDeletingBatch}
-              >
-                Cancel
-              </Button>
-              <Button
-                variant="danger"
-                type="submit"
-                disabled={isDeletingBatch || !deletingBatchGroup.reason.trim()}
-              >
-                {isDeletingBatch ? 'Reversing...' : 'Confirm Stock Reversal & Delete'}
-              </Button>
-            </div>
-          </form>
-        )}
+              <Input
+                label="Mandatory Reason for Deleting Batch *"
+                placeholder="e.g. Duplicate entry / Incorrect cooked quantity logged / Batch spoiled"
+                value={deletingBatchGroup.reason}
+                onChange={e =>
+                  setDeletingBatchGroup({ ...deletingBatchGroup, reason: e.target.value })
+                }
+                required
+                disabled={hasInsufficientStock}
+              />
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
+                <Button
+                  variant="secondary"
+                  type="button"
+                  onClick={() => setDeletingBatchGroup(null)}
+                  disabled={isDeletingBatch}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="danger"
+                  type="submit"
+                  disabled={isDeletingBatch || !deletingBatchGroup.reason.trim() || hasInsufficientStock}
+                >
+                  {isDeletingBatch ? 'Reversing...' : hasInsufficientStock ? 'Blocked (Stock Dispatched)' : 'Confirm Stock Reversal & Delete'}
+                </Button>
+              </div>
+            </form>
+          );
+        })()}
       </Modal>
     </div>
   );
