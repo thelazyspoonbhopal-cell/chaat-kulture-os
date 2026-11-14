@@ -106,6 +106,9 @@ export const transfersRepo = {
     from_location_id: string;
     to_location_id: string;
     items: Omit<DispatchItem, 'id' | 'dispatch_id' | 'received_quantity' | 'damaged_or_missing_quantity'>[];
+    vehicle_number?: string;
+    driver_name?: string;
+    driver_phone?: string;
     notes?: string;
     dispatched_by?: string;
     is_demo?: boolean;
@@ -137,6 +140,9 @@ export const transfersRepo = {
       to_location_id: data.to_location_id,
       status: 'in_transit',
       dispatch_date: now,
+      vehicle_number: data.vehicle_number,
+      driver_name: data.driver_name,
+      driver_phone: data.driver_phone,
       notes: data.notes,
       dispatched_by: data.dispatched_by,
       created_at: now,
@@ -148,12 +154,20 @@ export const transfersRepo = {
       // 1. Save dispatch
       await db.dispatches.put(newDispatch);
 
-      // 2. Update stock request status if linked
+      // 2. Update stock request status and dispatched quantities if linked
       if (data.stock_request_id) {
         const req = await db.stock_requests.get(data.stock_request_id);
         if (req) {
+          const updatedReqItems = (req.items || []).map(rItem => {
+            const dItem = items.find(di => di.inventory_item_id === rItem.inventory_item_id);
+            return {
+              ...rItem,
+              dispatched_quantity: dItem ? dItem.dispatched_quantity : rItem.dispatched_quantity,
+            };
+          });
           await db.stock_requests.update(data.stock_request_id, {
             status: 'dispatched',
+            items: updatedReqItems,
             updated_at: now,
           });
         }
@@ -273,10 +287,21 @@ export const transfersRepo = {
 
       // 2. Update stock request if linked
       if (dispatch.stock_request_id) {
-        await db.stock_requests.update(dispatch.stock_request_id, {
-          status: 'received',
-          updated_at: now,
-        });
+        const req = await db.stock_requests.get(dispatch.stock_request_id);
+        if (req) {
+          const updatedReqItems = (req.items || []).map(rItem => {
+            const rcItem = updatedItems.find(ui => ui.inventory_item_id === rItem.inventory_item_id);
+            return {
+              ...rItem,
+              received_quantity: rcItem ? rcItem.received_quantity : rItem.received_quantity,
+            };
+          });
+          await db.stock_requests.update(dispatch.stock_request_id, {
+            status: 'received',
+            items: updatedReqItems,
+            updated_at: now,
+          });
+        }
       }
 
       // 3. For each item: Clear in_transit, add received to destination available_quantity
