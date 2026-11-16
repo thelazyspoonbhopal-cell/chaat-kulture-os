@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { usersRepo } from '../../lib/dal/usersRepo';
 import { attendanceRepo } from '../../lib/dal/attendanceRepo';
+import { db } from '../../lib/db';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Badge } from '../../components/ui/Badge';
@@ -68,13 +69,32 @@ export const StaffAttendanceManager: React.FC = () => {
         attendanceRepo.getAttendanceForDate(selectedDate, undefined, forceSync),
       ]);
 
-      // Filter active staff (exclude deleted or inactive if marked)
-      const activeStaff = allUsers.filter(u => u.is_active !== false);
+      // Filter active staff: exclude Admin / Super Admin (role === 'owner'), deleted or inactive users
+      const activeStaff = allUsers.filter(u => 
+        u.is_active !== false && 
+        u.role !== 'owner' && 
+        u.id !== 'usr_owner' &&
+        !u.full_name?.toLowerCase().includes('(super admin)') &&
+        !u.full_name?.toLowerCase().includes('admin')
+      );
       setStaffList(activeStaff);
 
-      // Create attendance map
+      // Clean up any stale admin attendance records locally
+      try {
+        await db.staff_attendance.where('user_id').equals('usr_owner').delete();
+        const staleOwnerRecords = await db.staff_attendance.filter((r: StaffAttendanceRecord) => r.role === 'owner').toArray();
+        if (staleOwnerRecords.length > 0) {
+          await db.staff_attendance.bulkDelete(staleOwnerRecords.map((r: StaffAttendanceRecord) => r.id));
+        }
+      } catch (e) {
+        // ignore
+      }
+
+      // Create attendance map (excluding any admin records)
       const map = new Map<string, StaffAttendanceRecord>();
-      existingAtt.forEach(a => map.set(a.user_id, a));
+      existingAtt
+        .filter(a => a.role !== 'owner' && a.user_id !== 'usr_owner')
+        .forEach(a => map.set(a.user_id, a));
 
       // For any staff member who does not yet have a record for this date, initialize a default 'present' entry
       activeStaff.forEach(u => {
@@ -159,7 +179,9 @@ export const StaffAttendanceManager: React.FC = () => {
     setIsSaving(true);
     try {
       const updatedBy = currentUser?.full_name || currentRole;
-      const recordsToSave = Array.from(attendanceMap.values());
+      const recordsToSave = Array.from(attendanceMap.values()).filter(
+        r => r.role !== 'owner' && r.user_id !== 'usr_owner'
+      );
       await attendanceRepo.saveAttendanceRecords(recordsToSave, updatedBy);
       showToast(`Saved attendance for ${recordsToSave.length} staff members!`, 'success');
     } catch (err: any) {
@@ -173,6 +195,7 @@ export const StaffAttendanceManager: React.FC = () => {
   // Filtered staff list by location and search query
   const filteredStaff = useMemo(() => {
     return staffList.filter(u => {
+      if (u.role === 'owner' || u.id === 'usr_owner') return false;
       const rec = attendanceMap.get(u.id);
       const locId = rec ? rec.location_id : (u.assigned_location_id || u.assigned_location_ids?.[0]);
 

@@ -44,11 +44,13 @@ export const attendanceRepo = {
       // Merge local records (local state takes precedence)
       localRecords.forEach(a => attMap.set(a.id, a));
 
-      const mergedAttendance = Array.from(attMap.values());
+      const mergedAttendance = Array.from(attMap.values())
+        .filter(a => a.role !== 'owner' && a.user_id !== 'usr_owner');
 
-      // Save any missing cloud records into local Dexie store
+      // Save any missing cloud records into local Dexie store (excluding admin)
       if (cloudData && Array.isArray(cloudData.attendance)) {
         for (const a of cloudData.attendance) {
+          if (a.role === 'owner' || a.user_id === 'usr_owner') continue;
           if (!localRecords.some(lr => lr.id === a.id)) {
             await db.staff_attendance.put(a);
           }
@@ -121,7 +123,7 @@ export const attendanceRepo = {
       list = await db.staff_attendance.toArray();
     }
 
-    list = list.filter(a => a.date === date);
+    list = list.filter(a => a.date === date && a.role !== 'owner' && a.user_id !== 'usr_owner');
 
     if (locationId && locationId !== 'all') {
       list = list.filter(a => a.location_id === locationId);
@@ -132,8 +134,11 @@ export const attendanceRepo = {
 
   async saveAttendanceRecords(records: StaffAttendanceRecord[], updatedBy: string): Promise<void> {
     const now = new Date().toISOString();
+    const cleanRecords = records.filter(r => r.role !== 'owner' && r.user_id !== 'usr_owner');
+    if (cleanRecords.length === 0) return;
+
     await db.transaction('rw', [db.staff_attendance, db.audit_logs], async () => {
-      for (const rec of records) {
+      for (const rec of cleanRecords) {
         const toSave: StaffAttendanceRecord = {
           ...rec,
           recorded_by: updatedBy,
@@ -147,11 +152,11 @@ export const attendanceRepo = {
         business_id: 'biz_chaatkulture_01',
         action: 'UPDATE_STAFF_ATTENDANCE',
         entity: 'staff_attendance',
-        entity_id: records[0]?.date || now.split('T')[0],
-        location_id: records[0]?.location_id || 'loc_base_01',
+        entity_id: cleanRecords[0]?.date || now.split('T')[0],
+        location_id: cleanRecords[0]?.location_id || 'loc_base_01',
         new_data: {
-          count: records.length,
-          date: records[0]?.date,
+          count: cleanRecords.length,
+          date: cleanRecords[0]?.date,
           updatedBy,
         },
         created_at: now,
@@ -163,6 +168,7 @@ export const attendanceRepo = {
   },
 
   async saveSingleRecord(record: StaffAttendanceRecord, updatedBy: string): Promise<void> {
+    if (record.role === 'owner' || record.user_id === 'usr_owner') return;
     const now = new Date().toISOString();
     const toSave: StaffAttendanceRecord = {
       ...record,
@@ -183,7 +189,8 @@ export const attendanceRepo = {
     recordedBy: string
   ): Promise<StaffAttendanceRecord[]> {
     const now = new Date().toISOString();
-    const records: StaffAttendanceRecord[] = staffList.map(u => {
+    const nonAdminStaff = staffList.filter(u => u.role !== 'owner' && u.id !== 'usr_owner');
+    const records: StaffAttendanceRecord[] = nonAdminStaff.map(u => {
       const locId = targetLocationId === 'all'
         ? (u.assigned_location_id || u.assigned_location_ids?.[0] || 'loc_base_01')
         : targetLocationId;
