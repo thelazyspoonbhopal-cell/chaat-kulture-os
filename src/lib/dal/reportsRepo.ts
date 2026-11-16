@@ -50,11 +50,8 @@ export const reportsRepo = {
     const locations = await db.locations.toArray();
     const locMap = new Map(locations.map(l => [l.id, l]));
 
+    await salesRepo.syncFromCloud().catch(() => {});
     let sales = await db.sales.toArray();
-    if (sales.length === 0) {
-      await salesRepo.syncFromCloud();
-      sales = await db.sales.toArray();
-    }
 
     // Filter by location if specified
     if (filter.locationId && filter.locationId !== 'all') {
@@ -172,11 +169,8 @@ export const reportsRepo = {
 
   async getEstimatedPL(filter: DateRangeFilter): Promise<EstimatedPLReport> {
     // 1. Revenue from Sales
+    await salesRepo.syncFromCloud().catch(() => {});
     let sales = await db.sales.toArray();
-    if (sales.length === 0) {
-      await salesRepo.syncFromCloud();
-      sales = await db.sales.toArray();
-    }
     if (filter.locationId && filter.locationId !== 'all') {
       sales = sales.filter(s => s.location_id === filter.locationId);
     }

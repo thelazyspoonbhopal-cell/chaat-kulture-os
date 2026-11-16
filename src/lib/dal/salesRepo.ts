@@ -11,6 +11,7 @@ export interface CloudSalesPayload {
 
 let isSalesSyncing = false;
 let salesSyncTimeout: any = null;
+let lastSalesSyncTimestamp = 0;
 
 export const salesRepo = {
   // ---------------- CLOUD REGISTRY SYNC ----------------
@@ -28,14 +29,45 @@ export const salesRepo = {
 
   async syncSalesToCloud(): Promise<boolean> {
     try {
-      const allSales = await db.sales.toArray();
+      // 1. Fetch current cloud sales to avoid clobbering sales punched across other devices/browsers
+      const [cloudData, localSales] = await Promise.all([
+        this.fetchCloudSales(),
+        db.sales.toArray(),
+      ]);
+
+      const salesMap = new Map<string, Sale>();
+
+      // First add cloud sales
+      if (cloudData && Array.isArray(cloudData.sales)) {
+        cloudData.sales.forEach(s => salesMap.set(s.id, s));
+      }
+      // Merge local sales (local state takes precedence for matching IDs)
+      localSales.forEach(s => salesMap.set(s.id, s));
+
+      const mergedSales = Array.from(salesMap.values());
+
+      // Save any missing cloud sales into local Dexie store
+      if (cloudData && Array.isArray(cloudData.sales)) {
+        for (const s of cloudData.sales) {
+          if (!localSales.some(ls => ls.id === s.id)) {
+            await db.sales.put(s);
+          }
+        }
+      }
+
       const payload: CloudSalesPayload = {
-        sales: allSales,
+        sales: mergedSales,
         updated_at: new Date().toISOString(),
       };
-      return await updateGistFiles({
+
+      const success = await updateGistFiles({
         [SALES_GIST_FILE]: payload,
       });
+
+      if (success) {
+        lastSalesSyncTimestamp = Date.now();
+      }
+      return success;
     } catch (err) {
       console.error('[SalesRepo] Failed to sync sales to cloud:', err);
       return false;
@@ -63,7 +95,7 @@ export const salesRepo = {
           await db.sales.put(s);
         }
 
-        // If local has sales not yet in cloud, push union
+        // If local has sales not yet in cloud, push union back to cloud
         const cloudIds = new Set(cloudData.sales.map(s => s.id));
         const hasExtra = localSales.some(s => !cloudIds.has(s.id));
         if (hasExtra) {
@@ -72,6 +104,8 @@ export const salesRepo = {
       } else if (localSales.length > 0) {
         await this.syncSalesToCloud();
       }
+
+      lastSalesSyncTimestamp = Date.now();
     } catch (err) {
       console.error('[SalesRepo] Sync from cloud failed:', err);
     } finally {
@@ -79,10 +113,10 @@ export const salesRepo = {
     }
   },
 
-  async getSales(filters?: { location_id?: string; channel?: SalesChannel; date?: string }): Promise<Sale[]> {
+  async getSales(filters?: { location_id?: string; channel?: SalesChannel; date?: string }, forceSync = false): Promise<Sale[]> {
     let list = await db.sales.toArray();
-    if (list.length === 0) {
-      await this.syncFromCloud();
+    if (forceSync || list.length === 0 || Date.now() - lastSalesSyncTimestamp > 15000) {
+      await this.syncFromCloud().catch(() => {});
       list = await db.sales.toArray();
     }
 
@@ -179,8 +213,8 @@ export const salesRepo = {
 
     await db.sales.put(newSale);
 
-    // Debounced Cloud Sync across devices
-    this.debouncedSyncToCloud();
+    // Instant Cloud Sync across devices
+    this.syncSalesToCloud().catch(e => console.warn('[SalesRepo] Background cloud sync:', e));
 
     // Audit log
     await db.audit_logs.put({
@@ -249,8 +283,8 @@ export const salesRepo = {
     }
 
     let salesList = await query.toArray();
-    if (salesList.length === 0) {
-      await this.syncFromCloud();
+    if (salesList.length === 0 || Date.now() - lastSalesSyncTimestamp > 15000) {
+      await this.syncFromCloud().catch(() => {});
       let retryQuery = db.sales.filter(s => s.created_at.startsWith(targetDate));
       if (locationId) {
         retryQuery = retryQuery.filter(s => s.location_id === locationId);

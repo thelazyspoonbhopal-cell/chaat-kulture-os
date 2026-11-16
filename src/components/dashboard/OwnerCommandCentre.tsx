@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { db } from '../../lib/db';
+import { salesRepo } from '../../lib/dal/salesRepo';
 import { Button } from '../ui/Button';
 import { Badge } from '../ui/Badge';
 import {
@@ -13,6 +14,7 @@ import {
   CheckSquare,
   AlertTriangle,
   Store,
+  RefreshCw,
 } from 'lucide-react';
 import type { Sale, Location } from '../../types';
 
@@ -23,17 +25,24 @@ export const OwnerCommandCentre: React.FC = () => {
   const [cashSales, setCashSales] = useState<number>(0);
   const [upiSales, setUpiSales] = useState<number>(0);
   const [pendingDispatches, setPendingDispatches] = useState<number>(0);
+  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
 
-  useEffect(() => {
-    const fetchDashboardMetrics = async () => {
+  const fetchDashboardMetrics = async (isManual = false) => {
+    if (isManual) setIsRefreshing(true);
+    try {
+      // Pull fresh multi-outlet sales from global cloud registry
+      await salesRepo.syncFromCloud().catch(() => {});
       const allSales = await db.sales.toArray();
-      setSales(allSales);
+
+      const todayStr = new Date().toISOString().split('T')[0];
+      const todaySales = allSales.filter(s => s.created_at.startsWith(todayStr));
+      setSales(todaySales);
 
       let total = 0;
       let cash = 0;
       let upi = 0;
 
-      allSales.forEach(s => {
+      todaySales.forEach(s => {
         total += s.net_amount;
         s.payments?.forEach(p => {
           if (p.payment_method === 'cash') cash += p.amount;
@@ -47,9 +56,18 @@ export const OwnerCommandCentre: React.FC = () => {
 
       const inTransit = await db.dispatches.where('status').equals('in_transit').count();
       setPendingDispatches(inTransit);
-    };
+    } finally {
+      if (isManual) setIsRefreshing(false);
+    }
+  };
 
+  useEffect(() => {
     fetchDashboardMetrics();
+    // Auto-refresh every 20 seconds so punched sales from any outlet appear dynamically
+    const timer = setInterval(() => {
+      fetchDashboardMetrics();
+    }, 20000);
+    return () => clearInterval(timer);
   }, [isTestMode]);
 
   return (
@@ -72,6 +90,17 @@ export const OwnerCommandCentre: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => fetchDashboardMetrics(true)}
+            disabled={isRefreshing}
+            className="flex items-center gap-1.5 text-xs text-slate-300 hover:text-white"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-orange-400' : ''}`} />
+            <span>{isRefreshing ? 'Syncing...' : 'Sync Live'}</span>
+          </Button>
+
           {isTestMode ? (
             <Badge variant="warning" size="md">
               🧪 Demonstration Mode Active

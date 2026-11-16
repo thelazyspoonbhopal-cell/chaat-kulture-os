@@ -206,11 +206,8 @@ export const dailyClosingRepo = {
 
   async calculateLiveStats(locationId: string, dateStr: string): Promise<DayClosingLiveStats> {
     // 1. Sales for date
-    let allSales = await db.sales.where('location_id').equals(locationId).toArray();
-    if (allSales.length === 0) {
-      await salesRepo.syncFromCloud();
-      allSales = await db.sales.where('location_id').equals(locationId).toArray();
-    }
+    await salesRepo.syncFromCloud().catch(() => {});
+    const allSales = await db.sales.where('location_id').equals(locationId).toArray();
     const daySales = allSales.filter(s => s.created_at.startsWith(dateStr));
 
     let grossSales = 0;
