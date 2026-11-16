@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { db } from '../../lib/db';
 import { salesRepo } from '../../lib/dal/salesRepo';
@@ -23,6 +23,9 @@ import {
   AlertTriangle,
   Receipt,
   History,
+  ChevronRight,
+  Banknote,
+  CreditCard,
 } from 'lucide-react';
 import type { MenuItem, MenuCategory, SalesChannel, Sale, InventoryBalance } from '../../types';
 
@@ -71,6 +74,8 @@ export const SalesPOS: React.FC = () => {
 
   // Payment Settlement Modal
   const [isPayModalOpen, setIsPayModalOpen] = useState<boolean>(false);
+  const [isMobileCartOpen, setIsMobileCartOpen] = useState<boolean>(false);
+  const totalCartCount = useMemo(() => cart.reduce((acc, c) => acc + c.quantity, 0), [cart]);
   const [cashAmount, setCashAmount] = useState<string>('');
   const [upiAmount, setUpiAmount] = useState<string>('');
   const [upiRef, setUpiRef] = useState<string>('');
@@ -336,23 +341,171 @@ export const SalesPOS: React.FC = () => {
     return matchesCat && matchesSearch;
   });
 
+  const renderCartContent = (isModal = false) => (
+    <div className="flex flex-col justify-between space-y-4">
+      <div>
+        <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+          <div>
+            <h3 className="font-bold text-sm text-white flex items-center gap-2">
+              <Receipt className="w-4 h-4 text-orange-400" />
+              <span>Current Bill Order</span>
+            </h3>
+            <span className="text-[11px] text-slate-400">
+              Channel: <strong className="text-orange-400 uppercase">{selectedChannel.replace('_', ' ')}</strong>
+            </span>
+          </div>
+
+          {cart.length > 0 && (
+            <button
+              onClick={() => setCart([])}
+              className="text-xs text-rose-400 hover:text-rose-300 font-semibold px-2 py-1 rounded bg-rose-950/40 hover:bg-rose-950 border border-rose-900/60"
+            >
+              Clear All
+            </button>
+          )}
+        </div>
+
+        {/* Cart Items List */}
+        {cart.length === 0 ? (
+          <div className="py-12 text-center text-slate-500 text-xs">
+            Tap dishes on the menu to add them to this bill.
+          </div>
+        ) : (
+          <div className={`divide-y divide-slate-800 ${isModal ? 'max-h-80' : 'max-h-72'} overflow-y-auto text-xs my-2 pr-1`}>
+            {cart.map(c => {
+              const itemTotal = c.isComplimentary ? 0 : c.unitPrice * c.quantity;
+              return (
+                <div key={c.menuItem.id} className="py-2.5 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="font-semibold text-white">{c.menuItem.name}</span>
+                      {c.isComplimentary && (
+                        <span className="ml-2 text-[10px] text-emerald-400 bg-emerald-950 px-1.5 py-0.5 rounded font-bold">
+                          COMPLIMENTARY
+                        </span>
+                      )}
+                    </div>
+                    <span className="font-bold text-white font-mono">
+                      {c.isComplimentary ? '₹0.00' : `₹${itemTotal.toFixed(2)}`}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between text-slate-400">
+                    <span className="text-[11px] font-mono">
+                      ₹{c.unitPrice} × {c.quantity} (+{c.taxRate}% GST)
+                    </span>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => toggleComplimentary(c.menuItem.id)}
+                        className={`p-1 rounded ${c.isComplimentary ? 'text-emerald-400 bg-emerald-950' : 'text-slate-400 hover:text-emerald-400'}`}
+                        title="Toggle complimentary item"
+                      >
+                        <Gift className="w-3.5 h-3.5" />
+                      </button>
+                      <div className="flex items-center gap-1.5 bg-slate-950 px-1.5 py-0.5 rounded-lg border border-slate-800">
+                        <button
+                          onClick={() => updateQuantity(c.menuItem.id, -1)}
+                          className="w-6 h-6 rounded flex items-center justify-center text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 active:scale-90"
+                        >
+                          <Minus className="w-3 h-3" />
+                        </button>
+                        <span className="font-bold text-white px-1.5 min-w-[16px] text-center">{c.quantity}</span>
+                        <button
+                          onClick={() => updateQuantity(c.menuItem.id, 1)}
+                          className="w-6 h-6 rounded flex items-center justify-center text-white bg-orange-600 hover:bg-orange-500 active:scale-90"
+                        >
+                          <Plus className="w-3 h-3" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Calculations Breakdown */}
+        {cart.length > 0 && (
+          <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 space-y-1.5 text-xs font-mono">
+            <div className="flex justify-between text-slate-400">
+              <span>Gross Subtotal:</span>
+              <span>₹{grossSubtotal.toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between text-slate-400">
+              <span>Total Configurable GST:</span>
+              <span>₹{totalTax.toFixed(2)}</span>
+            </div>
+            {calculatedDiscount > 0 && (
+              <div className="flex justify-between text-emerald-400">
+                <span>Discount Applied:</span>
+                <span>-₹{calculatedDiscount.toFixed(2)}</span>
+              </div>
+            )}
+            <div className="flex justify-between font-bold text-white text-base pt-1.5 border-t border-slate-800">
+              <span>Net Payable:</span>
+              <span className="text-orange-400">₹{netTotal.toFixed(2)}</span>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Action Buttons */}
+      <div className="space-y-2">
+        {cart.length > 0 && (
+          <div className="flex gap-2">
+            <button
+              onClick={() => {
+                const val = prompt('Enter fixed discount amount (₹):');
+                if (val) {
+                  setDiscountType('fixed');
+                  setDiscountValue(parseFloat(val) || 0);
+                  setDiscountReason(prompt('Discount Reason:') || 'Manager Courtesy');
+                }
+              }}
+              className="flex-1 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-semibold flex items-center justify-center gap-1"
+            >
+              <Tag className="w-3 h-3 text-orange-400" />
+              <span>Discount {calculatedDiscount > 0 ? `(₹${calculatedDiscount})` : ''}</span>
+            </button>
+          </div>
+        )}
+
+        <Button
+          variant="primary"
+          size="lg"
+          disabled={cart.length === 0}
+          onClick={() => {
+            if (isModal) setIsMobileCartOpen(false);
+            openPaymentModal();
+          }}
+          className="w-full py-3 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 shadow-lg"
+        >
+          <span>Settlement & Split Payment</span>
+          <span className="font-mono text-sm opacity-90">(₹{netTotal.toFixed(2)})</span>
+        </Button>
+      </div>
+    </div>
+  );
+
   return (
     <div className="space-y-4">
       {/* Top Channel Bar & Actions */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-slate-900 border border-slate-800 rounded-2xl">
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-bold text-slate-400">Sales Channel:</span>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 p-2.5 sm:p-3 bg-slate-900 border border-slate-800 rounded-2xl">
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 no-scrollbar">
+          <span className="text-[11px] font-bold text-slate-400 shrink-0 mr-1 hidden sm:inline">Channel:</span>
           {(['walk_in', 'zomato', 'swiggy', 'other'] as SalesChannel[]).map(ch => (
             <button
               key={ch}
               onClick={() => setSelectedChannel(ch)}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all ${
+              className={`px-2.5 py-1.5 rounded-xl text-[11px] sm:text-xs font-bold uppercase tracking-wider shrink-0 transition-all ${
                 selectedChannel === ch
                   ? ch === 'zomato'
-                    ? 'bg-rose-600 text-white'
+                    ? 'bg-rose-600 text-white shadow-sm'
                     : ch === 'swiggy'
-                    ? 'bg-amber-600 text-white'
-                    : 'bg-orange-600 text-white'
+                    ? 'bg-amber-600 text-white shadow-sm'
+                    : 'bg-orange-600 text-white shadow-sm'
                   : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'
               }`}
             >
@@ -361,7 +514,7 @@ export const SalesPOS: React.FC = () => {
           ))}
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           <Button
             variant="secondary"
             size="sm"
@@ -369,9 +522,10 @@ export const SalesPOS: React.FC = () => {
               loadHistory();
               setIsHistoryOpen(true);
             }}
+            className="text-xs py-1.5 px-2.5 w-full sm:w-auto flex items-center justify-center gap-1.5"
           >
-            <History className="w-4 h-4 text-orange-400" />
-            <span>Today's Bills & Refunds ({recentSales.length})</span>
+            <History className="w-3.5 h-3.5 text-orange-400" />
+            <span>Bills & Refunds ({recentSales.length})</span>
           </Button>
         </div>
       </div>
@@ -379,7 +533,7 @@ export const SalesPOS: React.FC = () => {
       {/* Main Split View: Left Menu Grid + Right Cart Pad */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
         {/* Left Side: Dish Selector */}
-        <div className="lg:col-span-7 xl:col-span-8 space-y-3">
+        <div className="lg:col-span-7 xl:col-span-8 space-y-3 pb-28 lg:pb-0">
           {/* Category Filter Pills & Search */}
           <div className="flex flex-col sm:flex-row gap-2">
             <div className="relative flex-1">
@@ -393,7 +547,7 @@ export const SalesPOS: React.FC = () => {
               />
             </div>
 
-            <div className="flex gap-1.5 overflow-x-auto pb-1">
+            <div className="flex gap-1.5 overflow-x-auto pb-1 no-scrollbar">
               <button
                 onClick={() => setSelectedCategory('all')}
                 className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
@@ -428,7 +582,7 @@ export const SalesPOS: React.FC = () => {
               description="Your menu catalog is currently empty. Go to Admin Master Data Hub to add dishes."
             />
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-2.5 sm:gap-3">
               {filteredDishes.map(item => {
                 const effectivePrice =
                   selectedChannel === 'zomato' && item.channel_prices?.zomato
@@ -437,33 +591,75 @@ export const SalesPOS: React.FC = () => {
                     ? item.channel_prices.swiggy
                     : item.base_price;
 
+                const cartItem = cart.find(c => c.menuItem.id === item.id);
+                const inCartQty = cartItem ? cartItem.quantity : 0;
+
                 return (
                   <div
                     key={item.id}
                     onClick={() => addToCart(item)}
-                    className="p-3 bg-slate-900 hover:bg-slate-850 border border-slate-800 hover:border-orange-500/70 rounded-2xl cursor-pointer transition-all flex flex-col justify-between space-y-2 group shadow-sm active:scale-95"
+                    className={`p-2.5 sm:p-3 bg-slate-900 border rounded-2xl cursor-pointer transition-all flex flex-col justify-between space-y-2 group shadow-sm active:scale-95 ${
+                      inCartQty > 0
+                        ? 'border-orange-500 bg-orange-950/20 ring-1 ring-orange-500/50'
+                        : 'border-slate-800 hover:border-orange-500/70 hover:bg-slate-850'
+                    }`}
                   >
                     <div>
-                      <div className="flex items-start justify-between">
-                        <h4 className="font-bold text-xs text-white group-hover:text-orange-400 transition-colors line-clamp-2">
+                      <div className="flex items-start justify-between gap-1">
+                        <h4 className={`font-bold text-xs line-clamp-2 transition-colors ${inCartQty > 0 ? 'text-orange-300' : 'text-white group-hover:text-orange-400'}`}>
                           {item.name}
                         </h4>
-                        <span className="text-[10px] bg-slate-800 text-slate-300 px-1.5 py-0.5 rounded font-mono">
+                        {inCartQty > 0 && (
+                          <span className="text-[10px] bg-orange-500 text-white font-bold px-1.5 py-0.2 rounded-full font-mono shrink-0">
+                            {inCartQty}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1.5 mt-1">
+                        <span className="text-[9px] bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded font-mono">
                           {item.is_tax_inclusive !== false ? `${item.tax_rate}% incl.` : `+${item.tax_rate}%`}
                         </span>
+                        {item.code && (
+                          <span className="text-[9px] text-slate-500 font-mono">{item.code}</span>
+                        )}
                       </div>
-                      {item.code && (
-                        <span className="text-[10px] text-slate-400 font-mono block">{item.code}</span>
-                      )}
                     </div>
 
                     <div className="flex items-center justify-between pt-2 border-t border-slate-800/80">
-                      <span className="font-bold text-sm text-orange-400 font-mono">
+                      <span className="font-bold text-xs sm:text-sm text-orange-400 font-mono">
                         ₹{effectivePrice.toFixed(2)}
                       </span>
-                      <span className="text-[10px] px-2 py-0.5 rounded bg-orange-600/20 text-orange-400 font-bold group-hover:bg-orange-600 group-hover:text-white transition-all">
-                        + Add
-                      </span>
+
+                      {inCartQty > 0 ? (
+                        <div 
+                          className="flex items-center gap-1 bg-slate-950/90 rounded-lg p-0.5 border border-orange-500/40"
+                          onClick={e => e.stopPropagation()}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => updateQuantity(item.id, -1)}
+                            className="w-5 h-5 rounded flex items-center justify-center text-slate-300 hover:text-white bg-slate-800 active:scale-90"
+                            title="Decrease quantity"
+                          >
+                            <Minus className="w-2.5 h-2.5" />
+                          </button>
+                          <span className="font-bold text-[11px] text-orange-400 px-1 font-mono min-w-[14px] text-center">
+                            {inCartQty}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => addToCart(item)}
+                            className="w-5 h-5 rounded flex items-center justify-center text-white bg-orange-600 hover:bg-orange-500 active:scale-90"
+                            title="Add one more"
+                          >
+                            <Plus className="w-2.5 h-2.5" />
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-[10px] px-2 py-0.5 rounded bg-orange-600/20 text-orange-400 font-bold group-hover:bg-orange-600 group-hover:text-white transition-all">
+                          + Add
+                        </span>
+                      )}
                     </div>
                   </div>
                 );
@@ -472,150 +668,64 @@ export const SalesPOS: React.FC = () => {
           )}
         </div>
 
-        {/* Right Side: Running Order Pad */}
-        <div className="lg:col-span-5 xl:col-span-4 bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col justify-between space-y-4 shadow-xl">
-          <div>
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-              <div>
-                <h3 className="font-bold text-sm text-white flex items-center gap-2">
-                  <Receipt className="w-4 h-4 text-orange-400" />
-                  <span>Current Bill Order</span>
-                </h3>
-                <span className="text-[11px] text-slate-400">
-                  Channel: <strong className="text-orange-400 uppercase">{selectedChannel.replace('_', ' ')}</strong>
-                </span>
-              </div>
+        {/* Right Side: Running Order Pad (Desktop only) */}
+        <div className="hidden lg:flex lg:col-span-5 xl:col-span-4 bg-slate-900 border border-slate-800 rounded-2xl p-4 flex-col justify-between shadow-xl">
+          {renderCartContent(false)}
+        </div>
+      </div>
 
-              {cart.length > 0 && (
-                <button
-                  onClick={() => setCart([])}
-                  className="text-xs text-rose-400 hover:text-rose-300 font-semibold"
-                >
-                  Clear All
-                </button>
-              )}
+      {/* Mobile Slide-Up Cart Order Modal */}
+      <Modal
+        isOpen={isMobileCartOpen}
+        onClose={() => setIsMobileCartOpen(false)}
+        title="Current Bill Order"
+        subtitle={`Channel: ${selectedChannel.replace('_', ' ').toUpperCase()} • ${totalCartCount} ${totalCartCount === 1 ? 'Item' : 'Items'}`}
+        maxWidth="md"
+      >
+        {renderCartContent(true)}
+      </Modal>
+
+      {/* Mobile Floating Cart Summary Bar (Docked above MobileNav) */}
+      {cart.length > 0 && (
+        <div className="lg:hidden fixed bottom-[54px] left-0 right-0 p-2.5 px-4 bg-slate-900/95 backdrop-blur-md border-t border-orange-500/50 shadow-2xl flex items-center justify-between z-30 animate-in slide-in-from-bottom-5">
+          <div 
+            className="flex items-center gap-2.5 cursor-pointer flex-1 mr-2"
+            onClick={() => setIsMobileCartOpen(true)}
+          >
+            <div className="relative p-2 bg-orange-600/20 text-orange-400 rounded-xl border border-orange-500/30">
+              <Receipt className="w-5 h-5" />
+              <span className="absolute -top-1.5 -right-1.5 bg-orange-600 text-white font-bold text-[10px] w-5 h-5 rounded-full flex items-center justify-center font-mono shadow">
+                {totalCartCount}
+              </span>
             </div>
-
-            {/* Cart Items List */}
-            {cart.length === 0 ? (
-              <div className="py-12 text-center text-slate-500 text-xs">
-                Tap items on the left to add them to the bill.
-              </div>
-            ) : (
-              <div className="divide-y divide-slate-800 max-h-72 overflow-y-auto text-xs my-2">
-                {cart.map(c => {
-                  const itemTotal = c.isComplimentary ? 0 : c.unitPrice * c.quantity;
-                  return (
-                    <div key={c.menuItem.id} className="py-2.5 space-y-1">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <span className="font-semibold text-white">{c.menuItem.name}</span>
-                          {c.isComplimentary && (
-                            <span className="ml-2 text-[10px] text-emerald-400 bg-emerald-950 px-1.5 py-0.5 rounded font-bold">
-                              COMPLIMENTARY
-                            </span>
-                          )}
-                        </div>
-                        <span className="font-bold text-white font-mono">
-                          {c.isComplimentary ? '₹0.00' : `₹${itemTotal.toFixed(2)}`}
-                        </span>
-                      </div>
-
-                      <div className="flex items-center justify-between text-slate-400">
-                        <span className="text-[11px] font-mono">
-                          ₹{c.unitPrice} × {c.quantity} (+{c.taxRate}% GST)
-                        </span>
-
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => toggleComplimentary(c.menuItem.id)}
-                            className="p-1 text-slate-400 hover:text-emerald-400"
-                            title="Toggle complimentary item"
-                          >
-                            <Gift className="w-3.5 h-3.5" />
-                          </button>
-                          <div className="flex items-center gap-1.5 bg-slate-950 px-1.5 py-0.5 rounded-lg border border-slate-800">
-                            <button
-                              onClick={() => updateQuantity(c.menuItem.id, -1)}
-                              className="text-slate-400 hover:text-white"
-                            >
-                              <Minus className="w-3 h-3" />
-                            </button>
-                            <span className="font-bold text-white px-1">{c.quantity}</span>
-                            <button
-                              onClick={() => updateQuantity(c.menuItem.id, 1)}
-                              className="text-slate-400 hover:text-white"
-                            >
-                              <Plus className="w-3 h-3" />
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* Calculations Breakdown */}
-            {cart.length > 0 && (
-              <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 space-y-1.5 text-xs font-mono">
-                <div className="flex justify-between text-slate-400">
-                  <span>Gross Subtotal:</span>
-                  <span>₹{grossSubtotal.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between text-slate-400">
-                  <span>Total Configurable GST:</span>
-                  <span>₹{totalTax.toFixed(2)}</span>
-                </div>
+            <div>
+              <div className="text-sm font-black text-white font-mono flex items-center gap-1.5">
+                <span>₹{netTotal.toFixed(2)}</span>
                 {calculatedDiscount > 0 && (
-                  <div className="flex justify-between text-emerald-400">
-                    <span>Discount Applied:</span>
-                    <span>-₹{calculatedDiscount.toFixed(2)}</span>
-                  </div>
+                  <span className="text-[10px] text-emerald-400 font-normal">(-₹{calculatedDiscount.toFixed(0)})</span>
                 )}
-                <div className="flex justify-between font-bold text-white text-base pt-1.5 border-t border-slate-800">
-                  <span>Net Payable:</span>
-                  <span className="text-orange-400">₹{netTotal.toFixed(2)}</span>
-                </div>
               </div>
-            )}
+              <div className="text-[11px] text-slate-400 flex items-center gap-1">
+                <span>{totalCartCount} items</span>
+                <span>•</span>
+                <span className="text-orange-400 font-medium">View Bill</span>
+              </div>
+            </div>
           </div>
 
-          {/* Action Buttons */}
-          <div className="space-y-2">
-            {cart.length > 0 && (
-              <div className="flex gap-2">
-                <button
-                  onClick={() => {
-                    const val = prompt('Enter fixed discount amount (₹):');
-                    if (val) {
-                      setDiscountType('fixed');
-                      setDiscountValue(parseFloat(val) || 0);
-                      setDiscountReason(prompt('Discount Reason:') || 'Manager Courtesy');
-                    }
-                  }}
-                  className="flex-1 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-semibold flex items-center justify-center gap-1"
-                >
-                  <Tag className="w-3 h-3 text-orange-400" />
-                  <span>Discount</span>
-                </button>
-              </div>
-            )}
-
+          <div className="flex items-center gap-2">
             <Button
               variant="primary"
-              size="lg"
-              disabled={cart.length === 0}
+              size="sm"
               onClick={openPaymentModal}
-              className="w-full py-3"
+              className="bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 font-bold text-xs py-2 px-3.5 shadow-lg flex items-center gap-1"
             >
-              <span>Settlement & Split Payment</span>
-              <span className="font-mono text-sm opacity-90">(₹{netTotal.toFixed(2)})</span>
+              <span>Pay Bill</span>
+              <ChevronRight className="w-4 h-4" />
             </Button>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Split Payment Modal */}
       <Modal
@@ -637,6 +747,63 @@ export const SalesPOS: React.FC = () => {
                 ₹{((parseFloat(cashAmount) || 0) + (parseFloat(upiAmount) || 0) + (parseFloat(cardAmount) || 0)).toFixed(2)}
               </span>
             </div>
+          </div>
+
+          {/* Quick 1-Tap Payment Presets (Touch & Mobile Friendly) */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setCashAmount(netTotal.toFixed(2));
+                setUpiAmount('');
+                setCardAmount('');
+              }}
+              className="p-2.5 bg-slate-900 hover:bg-emerald-950/40 border border-slate-800 hover:border-emerald-500/60 rounded-xl text-left transition-all active:scale-95 group"
+            >
+              <div className="text-[10px] text-slate-400 font-medium flex items-center gap-1">
+                <Banknote className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Exact Cash</span>
+              </div>
+              <div className="text-xs font-bold text-emerald-400 font-mono mt-0.5">
+                ₹{netTotal.toFixed(2)}
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setUpiAmount(netTotal.toFixed(2));
+                setCashAmount('');
+                setCardAmount('');
+              }}
+              className="p-2.5 bg-slate-900 hover:bg-blue-950/40 border border-slate-800 hover:border-blue-500/60 rounded-xl text-left transition-all active:scale-95 group"
+            >
+              <div className="text-[10px] text-slate-400 font-medium flex items-center gap-1">
+                <CreditCard className="w-3.5 h-3.5 text-blue-400" />
+                <span>Exact UPI / QR</span>
+              </div>
+              <div className="text-xs font-bold text-blue-400 font-mono mt-0.5">
+                ₹{netTotal.toFixed(2)}
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                const half = (netTotal / 2).toFixed(2);
+                setCashAmount(half);
+                setUpiAmount((netTotal - parseFloat(half)).toFixed(2));
+                setCardAmount('');
+              }}
+              className="p-2.5 bg-slate-900 hover:bg-purple-950/40 border border-slate-800 hover:border-purple-500/60 rounded-xl text-left transition-all active:scale-95 group col-span-2 sm:col-span-1"
+            >
+              <div className="text-[10px] text-slate-400 font-medium flex items-center gap-1">
+                <span>50/50 Cash + UPI</span>
+              </div>
+              <div className="text-xs font-bold text-purple-300 font-mono mt-0.5">
+                Split Evenly
+              </div>
+            </button>
           </div>
 
           <div className="space-y-3">
