@@ -679,6 +679,25 @@ export interface FeatureFlag {
   is_enabled: boolean;
 }
 
+// ---------------- STAFF ATTENDANCE & OVERTIME ----------------
+export type AttendanceStatus = 'present' | 'half_day' | 'absent' | 'on_leave';
+
+export interface StaffAttendanceRecord {
+  id: string; // e.g. att_20261116_usr_owner
+  user_id: string;
+  user_name: string;
+  role: UserRole;
+  location_id: string;
+  date: string; // YYYY-MM-DD
+  status: AttendanceStatus;
+  overtime_hours: number; // e.g. 0, 0.5, 1, 1.5, 2, etc.
+  check_in_time?: string; // HH:mm
+  check_out_time?: string; // HH:mm
+  notes?: string;
+  recorded_by?: string;
+  updated_at: string;
+}
+
 // ---------------- ROLE-BASED ACCESS CONTROL (RBAC) ----------------
 export type AppPermissionKey = 
   | 'view_dashboard'
@@ -693,6 +712,7 @@ export type AppPermissionKey =
   | 'manage_closing'
   | 'reopen_closing'
   | 'view_reports'
+  | 'manage_attendance'
   | 'manage_master_data'
   | 'manage_rbac'
   | 'access_sandbox';

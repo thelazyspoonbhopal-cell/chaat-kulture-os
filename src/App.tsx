@@ -19,6 +19,7 @@ import { ExpensesManager } from './features/expenses/ExpensesManager';
 // Phase 4 Management & Reporting Features
 import { DailyClosingManager } from './features/closing/DailyClosingManager';
 import { ReportsManager } from './features/reports/ReportsManager';
+import { StaffAttendanceManager } from './features/attendance/StaffAttendanceManager';
 import { LoginPage } from './features/auth/LoginPage';
 
 import { Button } from './components/ui/Button';
@@ -36,6 +37,7 @@ const TAB_PERMISSION_MAP: Record<string, AppPermissionKey> = {
   expenses: 'manage_expenses',
   closing: 'manage_closing',
   reports: 'view_reports',
+  attendance: 'manage_attendance',
   admin: 'manage_master_data',
 };
 
@@ -117,6 +119,9 @@ export const AppContent: React.FC = () => {
 
     case 'reports':
       return <ReportsManager />;
+
+    case 'attendance':
+      return <StaffAttendanceManager />;
 
     default:
       return <OwnerCommandCentre />;

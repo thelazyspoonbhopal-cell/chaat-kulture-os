@@ -33,6 +33,7 @@ import type {
   LoginAuditLog,
   LoginApprovalRequest,
   RolePermissionConfig,
+  StaffAttendanceRecord,
 } from '../types';
 
 export class ChaatKultureDexieDB extends Dexie {
@@ -69,6 +70,7 @@ export class ChaatKultureDexieDB extends Dexie {
   record_revisions!: Table<RecordRevision, string>;
   feature_flags!: Table<FeatureFlag, string>;
   role_permissions!: Table<RolePermissionConfig, string>;
+  staff_attendance!: Table<StaffAttendanceRecord, string>;
 
   constructor() {
     super('ChaatKultureOS_LocalDB');
@@ -103,6 +105,7 @@ export class ChaatKultureDexieDB extends Dexie {
       audit_logs: 'id, action, entity, entity_id, location_id, created_at',
       record_revisions: 'id, entity_type, entity_id, created_at',
       feature_flags: 'id, feature_key',
+      staff_attendance: 'id, user_id, location_id, date, status',
     });
 
     this.version(2).stores({
@@ -131,6 +134,10 @@ export class ChaatKultureDexieDB extends Dexie {
 
     this.version(7).stores({
       production_records: 'id, client_tx_id, batch_number, location_id, inventory_item_id, production_date, is_demo',
+    });
+
+    this.version(8).stores({
+      staff_attendance: 'id, user_id, location_id, date, status',
     });
   }
 }

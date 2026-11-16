@@ -1,6 +1,6 @@
 import React from 'react';
 import { useApp } from '../../context/AppContext';
-import { LayoutDashboard, ShoppingCart, Boxes, Truck, CheckSquare, Settings, ShieldCheck } from 'lucide-react';
+import { LayoutDashboard, ShoppingCart, Boxes, Truck, CheckSquare, Settings, ShieldCheck, UserCheck } from 'lucide-react';
 import type { AppPermissionKey } from '../../types';
 
 interface MobileNavItem {
@@ -16,6 +16,7 @@ export const MobileNav: React.FC = () => {
   const mobileItems: MobileNavItem[] = [
     { id: 'dashboard', label: 'Home', icon: <LayoutDashboard className="w-5 h-5" />, permissionKey: 'view_dashboard' },
     { id: 'sales', label: 'POS', icon: <ShoppingCart className="w-5 h-5" />, permissionKey: 'manage_pos' },
+    { id: 'attendance', label: 'Attendance', icon: <UserCheck className="w-5 h-5" />, permissionKey: 'manage_attendance' },
     { id: 'inventory', label: 'Stock', icon: <Boxes className="w-5 h-5" />, permissionKey: 'view_inventory' },
     { id: 'transfers', label: 'Indents', icon: <Truck className="w-5 h-5" />, permissionKey: 'manage_transfers' },
     { id: 'closing', label: 'Closing', icon: <CheckSquare className="w-5 h-5" />, permissionKey: 'manage_closing' },

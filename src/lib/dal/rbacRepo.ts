@@ -85,6 +85,12 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
     category: 'Finance',
     description: 'Channel revenue breakdown, sales mix trends, inventory valuation, and estimated income statement.'
   },
+  {
+    key: 'manage_attendance',
+    label: 'Staff Attendance & Overtime',
+    category: 'Administration',
+    description: 'Supervisory checklist for marking daily staff attendance, half-day shifts, and overtime hours.'
+  },
 
   // Administration
   {
@@ -126,6 +132,7 @@ export const DEFAULT_ROLE_PERMISSIONS: RolePermissionConfig[] = [
       manage_closing: true,
       reopen_closing: true,
       view_reports: true,
+      manage_attendance: true,
       manage_master_data: true,
       manage_rbac: true,
       access_sandbox: true
@@ -149,6 +156,7 @@ export const DEFAULT_ROLE_PERMISSIONS: RolePermissionConfig[] = [
       manage_closing: true,
       reopen_closing: false, // Restricted by default, can be granted by Super Admin
       view_reports: true,
+      manage_attendance: true,
       manage_master_data: false, // Restricted by default
       manage_rbac: false, // Super Admin only
       access_sandbox: true
@@ -172,6 +180,7 @@ export const DEFAULT_ROLE_PERMISSIONS: RolePermissionConfig[] = [
       manage_closing: false,
       reopen_closing: false,
       view_reports: false,
+      manage_attendance: false,
       manage_master_data: false,
       manage_rbac: false,
       access_sandbox: false
@@ -195,6 +204,7 @@ export const DEFAULT_ROLE_PERMISSIONS: RolePermissionConfig[] = [
       manage_closing: true,
       reopen_closing: false,
       view_reports: false,
+      manage_attendance: false,
       manage_master_data: false,
       manage_rbac: false,
       access_sandbox: false

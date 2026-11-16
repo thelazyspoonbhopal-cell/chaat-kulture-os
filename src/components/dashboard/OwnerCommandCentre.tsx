@@ -15,6 +15,7 @@ import {
   AlertTriangle,
   Store,
   RefreshCw,
+  UserCheck,
 } from 'lucide-react';
 import type { Sale, Location } from '../../types';
 
@@ -220,6 +221,15 @@ export const OwnerCommandCentre: React.FC = () => {
             <Boxes className="w-5 h-5 text-orange-400 mb-1 group-hover:scale-110 transition-transform" />
             <div className="font-bold text-white">Master Data Hub</div>
             <div className="text-[10px] text-slate-400">Configure dishes & inventory</div>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('attendance')}
+            className="p-3 bg-slate-950 border border-slate-800 hover:border-emerald-500/60 rounded-xl text-left transition-all group"
+          >
+            <UserCheck className="w-5 h-5 text-emerald-400 mb-1 group-hover:scale-110 transition-transform" />
+            <div className="font-bold text-white">Staff Attendance</div>
+            <div className="text-[10px] text-slate-400">Roster, half-day & overtime</div>
           </button>
 
           <button

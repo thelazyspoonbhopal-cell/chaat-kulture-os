@@ -11,6 +11,7 @@ import {
   CheckSquare,
   Settings,
   ShieldCheck,
+  UserCheck,
   Lock,
   User,
   LogOut,
@@ -91,6 +92,13 @@ export const Sidebar: React.FC = () => {
       icon: <FileSpreadsheet className="w-4 h-4 text-emerald-400" />,
       permissionKey: 'view_reports',
       badge: 'BI',
+    },
+    {
+      id: 'attendance',
+      label: 'Staff Attendance',
+      icon: <UserCheck className="w-4 h-4 text-emerald-400" />,
+      permissionKey: 'manage_attendance',
+      badge: 'Roster',
     },
     {
       id: 'admin',
