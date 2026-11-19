@@ -1,5 +1,6 @@
 import { db } from '../db';
 import { salesRepo } from './salesRepo';
+import { expensesRepo } from './expensesRepo';
 
 export interface DateRangeFilter {
   startDate: string; // YYYY-MM-DD
@@ -230,6 +231,7 @@ export const reportsRepo = {
     const grossMarginPct = netRevenue > 0 ? (grossProfit / netRevenue) * 100 : 0;
 
     // 3. Operational Expenses
+    await expensesRepo.syncFromCloud().catch(() => {});
     const expenseCategories = await db.expense_categories.toArray();
     const catMap = new Map(expenseCategories.map(c => [c.id, c.name]));
 

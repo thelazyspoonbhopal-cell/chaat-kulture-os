@@ -3,6 +3,7 @@ import { DailyClosing, CashClosing, StockCount, RecordRevision, SectionStatus } 
 import { cashTransfersRepo } from './cashTransfersRepo';
 import { fetchGistFile, updateGistFiles } from '../sync/cloudRegistry';
 import { salesRepo } from './salesRepo';
+import { expensesRepo } from './expensesRepo';
 
 export const CLOSINGS_GIST_FILE = 'chaat_kulture_closings.json';
 
@@ -205,8 +206,11 @@ export const dailyClosingRepo = {
   },
 
   async calculateLiveStats(locationId: string, dateStr: string): Promise<DayClosingLiveStats> {
-    // 1. Sales for date
-    await salesRepo.syncFromCloud().catch(() => {});
+    // 1. Sales & Expenses sync for date
+    await Promise.all([
+      salesRepo.syncFromCloud().catch(() => {}),
+      expensesRepo.syncFromCloud().catch(() => {}),
+    ]);
     const allSales = await db.sales.where('location_id').equals(locationId).toArray();
     const daySales = allSales.filter(s => s.created_at.startsWith(dateStr));
 

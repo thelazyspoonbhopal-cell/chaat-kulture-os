@@ -12,6 +12,7 @@ import { dailyClosingRepo } from '../lib/dal/dailyClosingRepo';
 import { transfersRepo } from '../lib/dal/transfersRepo';
 import { productionRepo } from '../lib/dal/productionRepo';
 import { attendanceRepo } from '../lib/dal/attendanceRepo';
+import { expensesRepo } from '../lib/dal/expensesRepo';
 import { sessionBus } from '../lib/security/sessionChannel';
 import { syncEngine, type SyncEngineStatus } from '../lib/sync/syncEngine';
 import type { Location, UserRole, UserProfile, UserSession, AppPermissionKey, RolePermissionConfig } from '../types';
@@ -146,6 +147,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         transfersRepo.syncFromCloud().catch(e => console.warn('[App] Background transfers sync:', e));
         productionRepo.syncFromCloud().catch(e => console.warn('[App] Background production sync:', e));
         attendanceRepo.syncFromCloud().catch(e => console.warn('[App] Background attendance sync:', e));
+        expensesRepo.syncFromCloud().catch(e => console.warn('[App] Background expenses sync:', e));
       }
 
       const [allLocs, allUsers] = await Promise.all([
@@ -230,6 +232,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       transfersRepo.syncFromCloud().catch(() => {});
       productionRepo.syncFromCloud().catch(() => {});
       attendanceRepo.syncFromCloud().catch(() => {});
+      expensesRepo.syncFromCloud().catch(() => {});
     };
     const handleOffline = () => setIsOnline(false);
     const handleFocus = () => {
@@ -238,6 +241,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       transfersRepo.syncFromCloud().catch(() => {});
       productionRepo.syncFromCloud().catch(() => {});
       attendanceRepo.syncFromCloud().catch(() => {});
+      expensesRepo.syncFromCloud().catch(() => {});
     };
 
     window.addEventListener('online', handleOnline);

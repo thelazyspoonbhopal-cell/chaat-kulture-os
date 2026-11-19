@@ -26,7 +26,10 @@ import {
   X,
   Maximize2,
   FileText,
+  RefreshCw,
+  Loader2,
 } from 'lucide-react';
+import { compressImageFile } from '../../lib/utils/imageCompressor';
 import type { Expense, ExpenseCategory, ExpensePayment, Location } from '../../types';
 
 export const ExpensesManager: React.FC = () => {
@@ -77,11 +80,16 @@ export const ExpensesManager: React.FC = () => {
   const [settleRef, setSettleRef] = useState<string>('');
   const [settleNotes, setSettleNotes] = useState<string>('');
 
-  const loadData = async () => {
+  // Cloud Sync & Compression State
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
+  const [isCompressing, setIsCompressing] = useState<boolean>(false);
+
+  const loadData = async (forceSync = false) => {
+    if (forceSync) setIsSyncing(true);
     try {
       const [allExpenses, allCats] = await Promise.all([
-        expensesRepo.getExpenses(),
-        expensesRepo.getCategories(),
+        expensesRepo.getExpenses(undefined, forceSync),
+        expensesRepo.getCategories(forceSync),
       ]);
       setExpenses(allExpenses);
       setCategories(allCats);
@@ -89,8 +97,16 @@ export const ExpensesManager: React.FC = () => {
       if (allCats.length > 0 && !formCatId) {
         setFormCatId(allCats[0].id);
       }
+      if (forceSync) {
+        showToast(`Synced ${allExpenses.length} expenses with cloud registry!`, 'success');
+      }
     } catch (err) {
       console.error(err);
+      if (forceSync) {
+        showToast('Error syncing expenses with cloud registry', 'error');
+      }
+    } finally {
+      if (forceSync) setIsSyncing(false);
     }
   };
 
@@ -115,50 +131,68 @@ export const ExpensesManager: React.FC = () => {
     setIsAddModalOpen(true);
   };
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    Array.from(files).forEach(file => {
-      if (!file.type.startsWith('image/')) {
-        showToast('Only image files (JPG, PNG, WebP) are supported', 'warning');
-        return;
-      }
-      const reader = new FileReader();
-      reader.onload = ev => {
-        if (ev.target?.result) {
-          const base64 = ev.target.result as string;
-          setFormReceiptImages(prev => [...prev, base64]);
+    setIsCompressing(true);
+    try {
+      const validFiles = Array.from(files).filter(file => {
+        if (!file.type.startsWith('image/')) {
+          showToast('Only image files (JPG, PNG, WebP) are supported', 'warning');
+          return false;
         }
-      };
-      reader.readAsDataURL(file);
-    });
-    e.target.value = '';
+        return true;
+      });
+
+      for (const file of validFiles) {
+        const compressed = await compressImageFile(file, 1200, 0.72);
+        setFormReceiptImages(prev => [...prev, compressed]);
+      }
+      if (validFiles.length > 0) {
+        showToast(`${validFiles.length} bill image(s) optimized & attached`, 'info');
+      }
+    } catch (err: any) {
+      console.error('Image compression error:', err);
+      showToast('Error processing bill image', 'error');
+    } finally {
+      setIsCompressing(false);
+      e.target.value = '';
+    }
   };
 
   const removeImage = (index: number) => {
     setFormReceiptImages(prev => prev.filter((_, i) => i !== index));
   };
 
-  const handleEditImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleEditImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    Array.from(files).forEach(file => {
-      if (!file.type.startsWith('image/')) {
-        showToast('Only image files (JPG, PNG, WebP) are supported', 'warning');
-        return;
-      }
-      const reader = new FileReader();
-      reader.onload = ev => {
-        if (ev.target?.result) {
-          const base64 = ev.target.result as string;
-          setEditReceiptImages(prev => [...prev, base64]);
+    setIsCompressing(true);
+    try {
+      const validFiles = Array.from(files).filter(file => {
+        if (!file.type.startsWith('image/')) {
+          showToast('Only image files (JPG, PNG, WebP) are supported', 'warning');
+          return false;
         }
-      };
-      reader.readAsDataURL(file);
-    });
-    e.target.value = '';
+        return true;
+      });
+
+      for (const file of validFiles) {
+        const compressed = await compressImageFile(file, 1200, 0.72);
+        setEditReceiptImages(prev => [...prev, compressed]);
+      }
+      if (validFiles.length > 0) {
+        showToast(`${validFiles.length} bill image(s) optimized & attached`, 'info');
+      }
+    } catch (err: any) {
+      console.error('Edit image compression error:', err);
+      showToast('Error processing bill image', 'error');
+    } finally {
+      setIsCompressing(false);
+      e.target.value = '';
+    }
   };
 
   const removeEditImage = (index: number) => {
@@ -310,10 +344,23 @@ export const ExpensesManager: React.FC = () => {
           </p>
         </div>
 
-        <Button variant="primary" size="sm" onClick={openAddExpenseModal}>
-          <Plus className="w-3.5 h-3.5" />
-          <span>{isStaff ? '+ Upload Bill / Record Expense' : '+ Record Expense'}</span>
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => loadData(true)}
+            disabled={isSyncing}
+            className="flex items-center gap-1.5 text-xs text-slate-300 hover:text-white"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin text-orange-400' : ''}`} />
+            <span>{isSyncing ? 'Syncing...' : 'Sync Cloud'}</span>
+          </Button>
+
+          <Button variant="primary" size="sm" onClick={openAddExpenseModal}>
+            <Plus className="w-3.5 h-3.5" />
+            <span>{isStaff ? '+ Upload Bill / Record Expense' : '+ Record Expense'}</span>
+          </Button>
+        </div>
       </div>
 
       {/* Tabs / Scoped View */}
@@ -777,12 +824,13 @@ export const ExpensesManager: React.FC = () => {
               </div>
 
               <label className="cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-950 border border-cyan-700/60 text-cyan-300 hover:bg-cyan-900/60 text-xs font-semibold transition-colors shrink-0">
-                <Upload className="w-3.5 h-3.5" />
-                <span>+ Upload Photos</span>
+                {isCompressing ? <Loader2 className="w-3.5 h-3.5 animate-spin text-cyan-400" /> : <Upload className="w-3.5 h-3.5" />}
+                <span>{isCompressing ? 'Optimizing...' : '+ Upload Photos'}</span>
                 <input
                   type="file"
                   accept="image/*"
                   multiple
+                  disabled={isCompressing}
                   onChange={handleImageUpload}
                   className="hidden"
                 />
@@ -1152,12 +1200,13 @@ export const ExpensesManager: React.FC = () => {
                 <span className="text-[11px] text-slate-400">Add more photos or delete existing receipt images</span>
               </div>
               <label className="cursor-pointer text-xs px-2.5 py-1 rounded-lg bg-cyan-950 border border-cyan-700/60 text-cyan-300 hover:bg-cyan-900/60 font-semibold flex items-center gap-1">
-                <Upload className="w-3.5 h-3.5" />
-                <span>+ Upload Photos</span>
+                {isCompressing ? <Loader2 className="w-3.5 h-3.5 animate-spin text-cyan-400" /> : <Upload className="w-3.5 h-3.5" />}
+                <span>{isCompressing ? 'Optimizing...' : '+ Upload Photos'}</span>
                 <input
                   type="file"
                   accept="image/*"
                   multiple
+                  disabled={isCompressing}
                   onChange={handleEditImageUpload}
                   className="hidden"
                 />

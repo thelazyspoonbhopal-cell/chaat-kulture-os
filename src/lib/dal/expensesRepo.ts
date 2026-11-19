@@ -1,9 +1,262 @@
 import { db } from '../db';
 import type { Expense, ExpensePayment, ExpenseCategory } from '../../types';
+import { fetchGistFile, updateGistFiles } from '../sync/cloudRegistry';
+import { compressBase64Image } from '../utils/imageCompressor';
+
+export const EXPENSES_GIST_FILE = 'chaat_kulture_expenses.json';
+
+export interface CloudExpensesPayload {
+  expenses: Expense[];
+  payments?: ExpensePayment[];
+  categories?: ExpenseCategory[];
+  deleted_ids?: string[];
+  updated_at: string;
+}
+
+const STORAGE_KEY_DELETED_EXPENSES = 'ck_deleted_expense_ids';
+
+function loadDeletedExpenseIds(): Set<string> {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_DELETED_EXPENSES);
+    return raw ? new Set(JSON.parse(raw)) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
+function persistDeletedExpenseId(id: string) {
+  try {
+    const set = loadDeletedExpenseIds();
+    set.add(id);
+    localStorage.setItem(STORAGE_KEY_DELETED_EXPENSES, JSON.stringify(Array.from(set)));
+  } catch (e) {
+    console.warn('[ExpensesRepo] Failed to persist deleted expense ID:', e);
+  }
+}
+
+let isExpensesSyncing = false;
+let expensesSyncTimeout: any = null;
+let lastExpensesSyncTimestamp = 0;
 
 export const expensesRepo = {
-  async getCategories(): Promise<ExpenseCategory[]> {
-    return await db.expense_categories.toArray();
+  // ---------------- CLOUD REGISTRY SYNC ----------------
+  async fetchCloudExpenses(): Promise<CloudExpensesPayload | null> {
+    try {
+      const data = await fetchGistFile<CloudExpensesPayload>(EXPENSES_GIST_FILE);
+      if (data && Array.isArray(data.expenses)) {
+        return data;
+      }
+    } catch (err) {
+      console.warn('[ExpensesRepo] Failed to fetch cloud expenses:', err);
+    }
+    return null;
+  },
+
+  async syncExpensesToCloud(): Promise<boolean> {
+    try {
+      const deletedIds = loadDeletedExpenseIds();
+
+      // 1. Fetch current cloud expenses to avoid overwriting expenses uploaded across other devices
+      const [cloudData, localExpenses, localPayments, localCats] = await Promise.all([
+        this.fetchCloudExpenses(),
+        db.expenses.toArray(),
+        db.expense_payments.toArray(),
+        db.expense_categories.toArray(),
+      ]);
+
+      if (cloudData?.deleted_ids && Array.isArray(cloudData.deleted_ids)) {
+        cloudData.deleted_ids.forEach(id => deletedIds.add(id));
+      }
+
+      const expMap = new Map<string, Expense>();
+      const payMap = new Map<string, ExpensePayment>();
+      const catMap = new Map<string, ExpenseCategory>();
+
+      // First add cloud records (excluding tombstoned deleted IDs)
+      if (cloudData && Array.isArray(cloudData.expenses)) {
+        cloudData.expenses.forEach(e => {
+          if (!deletedIds.has(e.id)) {
+            expMap.set(e.id, e);
+          }
+        });
+      }
+      if (cloudData && Array.isArray(cloudData.payments)) {
+        cloudData.payments.forEach(p => {
+          if (!deletedIds.has(p.id) && !deletedIds.has(p.expense_id)) {
+            payMap.set(p.id, p);
+          }
+        });
+      }
+      if (cloudData && Array.isArray(cloudData.categories)) {
+        cloudData.categories.forEach(c => catMap.set(c.id, c));
+      }
+
+      // Merge local records (local state takes precedence for updated items)
+      localExpenses.forEach(e => {
+        if (!deletedIds.has(e.id)) {
+          expMap.set(e.id, e);
+        }
+      });
+      localPayments.forEach(p => {
+        if (!deletedIds.has(p.id) && !deletedIds.has(p.expense_id)) {
+          payMap.set(p.id, p);
+        }
+      });
+      localCats.forEach(c => catMap.set(c.id, c));
+
+      // Save any missing cloud records into local Dexie store
+      if (cloudData && Array.isArray(cloudData.expenses)) {
+        for (const e of cloudData.expenses) {
+          if (!deletedIds.has(e.id) && !localExpenses.some(le => le.id === e.id)) {
+            await db.expenses.put(e);
+          }
+        }
+      }
+      if (cloudData && Array.isArray(cloudData.payments)) {
+        for (const p of cloudData.payments) {
+          if (!deletedIds.has(p.id) && !deletedIds.has(p.expense_id) && !localPayments.some(lp => lp.id === p.id)) {
+            await db.expense_payments.put(p);
+          }
+        }
+      }
+      if (cloudData && Array.isArray(cloudData.categories)) {
+        for (const c of cloudData.categories) {
+          if (!localCats.some(lc => lc.id === c.id)) {
+            await db.expense_categories.put(c);
+          }
+        }
+      }
+
+      // Optimize receipt images if any oversized uncompressed images exist
+      const mergedExpenses = await Promise.all(
+        Array.from(expMap.values()).map(async exp => {
+          if (!exp.receipt_images || exp.receipt_images.length === 0) return exp;
+          const hasOversized = exp.receipt_images.some(img => img.length > 250000);
+          if (!hasOversized) return exp;
+          try {
+            const compressed = await Promise.all(
+              exp.receipt_images.map(img => compressBase64Image(img, 1200, 0.72))
+            );
+            return {
+              ...exp,
+              receipt_images: compressed,
+              receipt_url: compressed[0] || exp.receipt_url,
+            };
+          } catch {
+            return exp;
+          }
+        })
+      );
+
+      const mergedPayments = Array.from(payMap.values());
+      const mergedCategories = Array.from(catMap.values());
+
+      const payload: CloudExpensesPayload = {
+        expenses: mergedExpenses,
+        payments: mergedPayments,
+        categories: mergedCategories,
+        deleted_ids: Array.from(deletedIds),
+        updated_at: new Date().toISOString(),
+      };
+
+      const success = await updateGistFiles({
+        [EXPENSES_GIST_FILE]: payload,
+      });
+
+      if (success) {
+        lastExpensesSyncTimestamp = Date.now();
+      }
+      return success;
+    } catch (err) {
+      console.error('[ExpensesRepo] Failed to sync expenses to cloud:', err);
+      return false;
+    }
+  },
+
+  debouncedSyncToCloud() {
+    if (expensesSyncTimeout) clearTimeout(expensesSyncTimeout);
+    expensesSyncTimeout = setTimeout(() => {
+      this.syncExpensesToCloud().catch(e => console.warn('[ExpensesRepo] Background sync failed:', e));
+    }, 2000);
+  },
+
+  async syncFromCloud(force = false): Promise<void> {
+    if (isExpensesSyncing && !force) return;
+    isExpensesSyncing = true;
+    try {
+      const [cloudData, localExpenses, localPayments, localCats] = await Promise.all([
+        this.fetchCloudExpenses(),
+        db.expenses.toArray(),
+        db.expense_payments.toArray(),
+        db.expense_categories.toArray(),
+      ]);
+
+      const deletedIds = loadDeletedExpenseIds();
+
+      if (cloudData) {
+        if (Array.isArray(cloudData.deleted_ids)) {
+          cloudData.deleted_ids.forEach(id => persistDeletedExpenseId(id));
+        }
+        const allDeleted = loadDeletedExpenseIds();
+
+        // 1. Remove deleted records from local Dexie
+        for (const delId of allDeleted) {
+          await db.expenses.delete(delId).catch(() => {});
+          await db.expense_payments.where('expense_id').equals(delId).delete().catch(() => {});
+        }
+
+        // 2. Put non-deleted cloud expenses
+        if (Array.isArray(cloudData.expenses)) {
+          for (const e of cloudData.expenses) {
+            if (!allDeleted.has(e.id)) {
+              await db.expenses.put(e);
+            }
+          }
+        }
+
+        // 3. Put payments
+        if (Array.isArray(cloudData.payments)) {
+          for (const p of cloudData.payments) {
+            if (!allDeleted.has(p.id) && !allDeleted.has(p.expense_id)) {
+              await db.expense_payments.put(p);
+            }
+          }
+        }
+
+        // 4. Put categories
+        if (Array.isArray(cloudData.categories)) {
+          for (const c of cloudData.categories) {
+            await db.expense_categories.put(c);
+          }
+        }
+
+        // 5. If local has expenses not yet in cloud, push union back to cloud
+        const cloudExpIds = new Set(Array.isArray(cloudData.expenses) ? cloudData.expenses.map(e => e.id) : []);
+        const hasExtra = localExpenses.some(e => !cloudExpIds.has(e.id) && !allDeleted.has(e.id));
+        if (hasExtra) {
+          await this.syncExpensesToCloud();
+        }
+      } else if (localExpenses.length > 0) {
+        // First-time seeding from local to cloud
+        await this.syncExpensesToCloud();
+      }
+
+      lastExpensesSyncTimestamp = Date.now();
+    } catch (err) {
+      console.error('[ExpensesRepo] Sync from cloud failed:', err);
+    } finally {
+      isExpensesSyncing = false;
+    }
+  },
+
+  // ---------------- LOCAL CRUD & QUERIES ----------------
+  async getCategories(forceSync = false): Promise<ExpenseCategory[]> {
+    let cats = await db.expense_categories.toArray();
+    if (forceSync || cats.length === 0) {
+      await this.syncFromCloud().catch(() => {});
+      cats = await db.expense_categories.toArray();
+    }
+    return cats;
   },
 
   async addCategory(name: string): Promise<ExpenseCategory> {
@@ -15,19 +268,32 @@ export const expensesRepo = {
       created_at: new Date().toISOString(),
     };
     await db.expense_categories.put(newCat);
+    this.debouncedSyncToCloud();
     return newCat;
   },
 
-  async getExpenses(filters?: { location_id?: string; category_id?: string; payment_status?: string; date?: string }): Promise<Expense[]> {
+  async getExpenses(
+    filters?: { location_id?: string; category_id?: string; payment_status?: string; date?: string },
+    forceSync = false
+  ): Promise<Expense[]> {
     let list = await db.expenses.toArray();
 
-    if (filters?.location_id) {
+    // If empty or older than 15s or explicitly requested, sync from cloud
+    if (forceSync || list.length === 0 || Date.now() - lastExpensesSyncTimestamp > 15000) {
+      await this.syncFromCloud(forceSync).catch(() => {});
+      list = await db.expenses.toArray();
+    }
+
+    const deletedIds = loadDeletedExpenseIds();
+    list = list.filter(e => !deletedIds.has(e.id));
+
+    if (filters?.location_id && filters.location_id !== 'all') {
       list = list.filter(e => e.location_id === filters.location_id);
     }
-    if (filters?.category_id) {
+    if (filters?.category_id && filters.category_id !== 'all') {
       list = list.filter(e => e.category_id === filters.category_id);
     }
-    if (filters?.payment_status) {
+    if (filters?.payment_status && filters.payment_status !== 'all') {
       list = list.filter(e => e.payment_status === filters.payment_status);
     }
     if (filters?.date) {
@@ -128,6 +394,9 @@ export const expensesRepo = {
       });
     });
 
+    // Immediate cloud synchronization across all devices and browsers
+    this.syncExpensesToCloud().catch(e => console.warn('[ExpensesRepo] Cloud push failed:', e));
+
     return newExpense;
   },
 
@@ -189,6 +458,9 @@ export const expensesRepo = {
       });
     });
 
+    // Immediate cloud synchronization
+    this.syncExpensesToCloud().catch(e => console.warn('[ExpensesRepo] Cloud push failed:', e));
+
     return payment;
   },
 
@@ -231,6 +503,10 @@ export const expensesRepo = {
       new_data: { updates, updatedBy },
       created_at: now,
     });
+
+    // Immediate cloud synchronization
+    this.syncExpensesToCloud().catch(e => console.warn('[ExpensesRepo] Cloud push failed:', e));
+
     return updated;
   },
 
@@ -262,5 +538,9 @@ export const expensesRepo = {
         created_at: now,
       });
     });
+
+    // Mark as deleted in tombstone storage and sync deletion to cloud immediately
+    persistDeletedExpenseId(id);
+    this.syncExpensesToCloud().catch(e => console.warn('[ExpensesRepo] Cloud delete push failed:', e));
   },
 };
